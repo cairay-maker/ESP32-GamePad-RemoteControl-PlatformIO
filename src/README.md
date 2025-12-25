@@ -6,13 +6,36 @@ Started: Dec 22, 2025 | Pop!_OS Linux + PlatformIO in VS Code
 [ESP32-WROOM-32 30-pin USB-C board](https://europe1.discourse-cdn.com/arduino/original/4X/7/7/e/77ead2a2a7d13b189ad9b6ba24c1d55b2c3e4645.jpeg)  
 
 ## Pin Assignment
-  Toggle Swith: GPIO-19; added external 5kΩ pull-up from GPIO19 to 3.3V. The pull-up is now ~10× stronger than the internal 45K one alone
+    Toggle Swith: GPIO-19; added 5kΩ pull-up from GPIO19 to 3.3V. The pull-up is now ~10× stronger than the internal 45K 
 
-  TFT_SCLK      GPIO-18
-  TFT_MOSI      GPIO-23
-  TFT_RST       GPIO-16
-  TFT_DC        GPIO-17 
-  TFT_CS        GPIO-5
+    TFT_SCLK        GPIO-18
+    TFT_MOSI        GPIO-23
+    TFT_RST         GPIO-16
+    TFT_DC          GPIO-17 
+    TFT_CS          GPIO-5
+
+    JoyStick_Right_X     GPIO-39;
+    JoyStick_Right_Y     GPIO-36;
+
+    JoyStick_Left_X     GPIO-12;
+    JoyStick_Left_Y     GPIO-13;
+
+    keyboard    GPIO-34  // 5-Button Analog Keyboard
+
+    Encoder_Right_SW    GPIO-35
+    Encoder_Right_DT    GPIO-32
+    Encoder_Right_CLK   GPIO-33
+
+    Encoder_Left_SW    GPIO-25 //not working
+    Encoder_Left_DT    GPIO-26
+    Encoder_Left_CLK   GPIO-27
+
+    Potentiometer_Right     GPIO-14
+    Potentiometer_Middle    GPIO-4
+    Potentiometer_Left      GPIO-15
+
+    IMU_SCL GPIO-22 //LSM6DS33
+    IMU_SDA GPIO-21
 
 
 

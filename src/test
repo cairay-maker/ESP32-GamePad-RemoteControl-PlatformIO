@@ -1,0 +1,145 @@
+#include "RemoteControlMode.h"
+#include <Arduino.h>
+
+RemoteControlMode::RemoteControlMode(TFTHandler& tftRef)
+    : Mode(tftRef)
+{
+  Serial.println("RemoteControlMode constructed - All sensors + IMU ready");
+}
+
+void RemoteControlMode::enter() {
+  tft.clearScreen();
+
+  tft.drawCenteredText("Remote Control", 8, TFT_CYAN, 1);
+
+  delay(500);
+
+  if (!imu.begin()) {
+    Serial.println("IMU init failed - check wiring (SDA=21, SCL=22)");
+  } else {
+    Serial.println("IMU initialized successfully");
+  }
+}
+
+void RemoteControlMode::update() {
+  // === Read all current values ===
+  String currentKey = keyboard.getCurrentKey();
+  String pressedKey = keyboard.getPressedKey();
+
+  joyRight.update();
+  joyLeft.update();
+
+  float joyRX = joyRight.getMappedX();
+  float joyRY = joyRight.getMappedY();
+  float joyLX = joyLeft.getMappedX();
+  float joyLY = joyLeft.getMappedY();
+
+  long encRight = encoderRight.getCounter();
+  long encLeft  = encoderLeft.getCounter();
+  bool encRBtn  = encoderRight.isButtonPressed();
+  bool encLBtn  = encoderLeft.isButtonPressed();
+
+  int potL = potLeft.read();
+  int potM = potMid.read();
+  int potR = potRight.read();
+
+  // Safe IMU read at 10Hz
+  static unsigned long lastIMURead = 0;
+  if (millis() - lastIMURead >= 100) {
+    imu.read();
+    lastIMURead = millis();
+  }
+
+  // Serial events
+  if (pressedKey != "NONE") Serial.printf(">>> KEY PRESSED: %s\n", pressedKey.c_str());
+  if (encRBtn) Serial.println(">>> ENC_RIGHT SELECT PRESSED");
+  if (encLBtn) Serial.println(">>> ENC_LEFT SELECT PRESSED");
+
+  // === Flicker-free redraw only on change ===
+  static String lastKey = "";
+  static float lastRX = -10.0f, lastRY = -10.0f, lastLX = -10.0f, lastLY = -10.0f;
+  static long lastEncR = -999, lastEncL = -999;
+  static bool lastRBtn = false, lastLBtn = false;
+  static int lastPotL = -1, lastPotM = -1, lastPotR = -1;
+  static float lastAX = -999, lastAY = -999, lastAZ = -999;
+  static float lastGX = -999, lastGY = -999, lastGZ = -999;
+
+  bool changed = (currentKey != lastKey) ||
+                 (abs(joyRX - lastRX) > 0.05f) || (abs(joyRY - lastRY) > 0.05f) ||
+                 (abs(joyLX - lastLX) > 0.05f) || (abs(joyLY - lastLY) > 0.05f) ||
+                 (encRight != lastEncR) || (encLeft != lastEncL) ||
+                 (encRBtn != lastRBtn) || (encLBtn != lastLBtn) ||
+                 (abs(potL - lastPotL) > 200) ||
+                 (abs(potM - lastPotM) > 200) ||
+                 (abs(potR - lastPotR) > 200) ||
+                 (abs(imu.ax - lastAX) > 0.1) || (abs(imu.ay - lastAY) > 0.1) || (abs(imu.az - lastAZ) > 0.1) ||
+                 (abs(imu.gx - lastGX) > 1.0) || (abs(imu.gy - lastGY) > 1.0) || (abs(imu.gz - lastGZ) > 1.0);
+
+  if (!changed) {
+    delay(50);
+    return;
+  }
+
+  // Update last values
+  lastKey = currentKey;
+  lastRX = joyRX; lastRY = joyRY;
+  lastLX = joyLX; lastLY = joyLY;
+  lastEncR = encRight; lastEncL = encLeft;
+  lastRBtn = encRBtn; lastLBtn = encLBtn;
+  lastPotL = potL; lastPotM = potM; lastPotR = potR;
+  lastAX = imu.ax; lastAY = imu.ay; lastAZ = imu.az;
+  lastGX = imu.gx; lastGY = imu.gy; lastGZ = imu.gz;
+
+  // === Display settings ===
+  const int textSize = 1;
+  const int baseCharHeight = 8;
+  const int charHeight = baseCharHeight * textSize;
+  const int lineSpacing = 4;
+  const int startX = 10;
+  const int startY = 24;
+
+  int lineNum = 0;
+
+  tft.getTFT().fillRect(0, startY - 5, 160, 160 - (startY - 5), TFT_BLACK);
+  tft.getTFT().setTextSize(textSize);
+
+  auto printLine = [&](uint16_t color, const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    char buffer[80];
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    int y = startY + (lineNum++ * (charHeight + lineSpacing));
+
+    tft.getTFT().fillRect(startX, y - charHeight/2 + 2, 140, charHeight + 2, TFT_BLACK);
+
+    tft.getTFT().setTextColor(color);
+    tft.getTFT().setCursor(startX, y);
+    tft.getTFT().println(buffer);
+  };
+
+  // === Lines ===
+  if (currentKey != "NONE") {
+    printLine(TFT_RED, "KEY: %s", currentKey.c_str());
+  } else {
+    printLine(TFT_WHITE, "KEY: NONE");
+  }
+
+  printLine(TFT_YELLOW, "JS_R: %.2f %.2f", joyRX, joyRY);
+  printLine(TFT_YELLOW, "JS_L: %.2f %.2f", joyLX, joyLY);
+
+  printLine(TFT_WHITE, "EncR: %5ld   %s", encRight, encRBtn ? "Select" : "None");
+  printLine(TFT_WHITE, "EncL: %5ld   %s", encLeft,  encLBtn ? "Select" : "None");
+
+  printLine(TFT_GREEN, "PotL:%4d M:%4d R:%4d", potL, potM, potR);
+
+  printLine(TFT_MAGENTA, "Accl X:%.1f Y:%.1f Z:%.1f", imu.ax, imu.ay, imu.az);
+  printLine(TFT_MAGENTA, "Gyro X:%.1f Y:%.1f Z:%.1f", imu.gx, imu.gy, imu.gz);
+
+  delay(50);
+}
+
+void RemoteControlMode::exit() {
+  Serial.println("Leaving Remote Control Mode");
+}
