@@ -1,8 +1,10 @@
 #include "RemoteControlMode.h"
 #include <Arduino.h>
 
-RemoteControlMode::RemoteControlMode(TFTHandler& tftRef)
-    : Mode(tftRef)
+RemoteControlMode::RemoteControlMode(TFTHandler& tftRef, Hardware& hw)
+    : Mode(tftRef), joyRight(hw.joyRight), joyLeft(hw.joyLeft), keyboard(hw.keyboard),
+      encoderRight(hw.encoderRight), encoderLeft(hw.encoderLeft),
+      potRight(hw.potRight), potMid(hw.potMid), potLeft(hw.potLeft), imu(hw.imu)
 {
   Serial.println("RemoteControlMode constructed - All sensors + IMU ready");
 }

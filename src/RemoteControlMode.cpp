@@ -1,13 +1,14 @@
 #include "RemoteControlMode.h"
-#include "Switches.h"   // ← Add this
-#include "ToggleSwitch.h"  // ← Add this line
 #include <Arduino.h>
 
 extern bool Switch1On;
 extern bool Switch2On;
 
-RemoteControlMode::RemoteControlMode(TFTHandler& tftRef)
-    : Mode(tftRef)
+RemoteControlMode::RemoteControlMode(TFTHandler& tftRef, Hardware& hw)
+    : Mode(tftRef),
+      joyRight(hw.joyRight), joyLeft(hw.joyLeft), keyboard(hw.keyboard),
+      encoderRight(hw.encoderRight), encoderLeft(hw.encoderLeft),
+      potRight(hw.potRight), potMid(hw.potMid), potLeft(hw.potLeft), imu(hw.imu)
 {
   Serial.println("RemoteControlMode constructed - All sensors ready (raw joystick printing enabled)");
 }
@@ -167,7 +168,7 @@ void RemoteControlMode::update() {
   };
 
   // === Lines ===
-  printLine(TFT_LIGHTGREY, "Sw1:%s Sw2:%s", Switch1On ? "On " : "Off", Switch2On ? "On " : "Off");
+  printLine(TFT_LIGHTGREY, "Switch 1:%s Switch 2:%s", Switch1On ? "On " : "Off", Switch2On ? "On " : "Off");
 
   if (currentKey != "NONE") {
     printLine(TFT_RED, "Keyboard: %s", currentKey.c_str());
@@ -175,14 +176,14 @@ void RemoteControlMode::update() {
     printLine(TFT_YELLOW, "Keyboard: None");
   }
 
-  printLine(TFT_SKYBLUE, "JS_R: %.2f %.2f", joyRX, joyRY);
-  printLine(TFT_SKYBLUE, "JS_L: %.2f %.2f", joyLX, joyLY);
+  printLine(TFT_SKYBLUE, "JS_R: %+5.2f %+5.2f", joyRX, joyRY);
+  printLine(TFT_SKYBLUE, "JS_L: %+5.2f %+5.2f", joyLX, joyLY);
 
   printLine(TFT_ORANGE, "EncR: %3ld  %s", encRight, encRBtn ? "Select" : "None");
   printLine(TFT_ORANGE, "EncL: %3ld  %s", encLeft,  encLBtn ? "Select" : "None");
 
   // Pots - normalized -1.00 to 1.00 (with deadzone for stable display)
-  printLine(TFT_GREEN, "PotL:%.2f M:%.2f R:%.2f", potL_norm, potM_norm, potR_norm);
+  printLine(TFT_GREEN, "PotL:%+4.1f M:%+4.1f R:%+4.1f", potL_norm, potM_norm, potR_norm);
 
   // IMU lines
   printLine(TFT_MAGENTA, "AcclX:%+4.1f Y:%+4.1f Z:%+4.1f", imu.ax, imu.ay, imu.az);

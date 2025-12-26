@@ -3,6 +3,7 @@
 #include "ToggleSwitch.h"
 #include "GamePadMode.h"
 #include "RemoteControlMode.h"
+#include "RemoteGraphicMode.h"
 
 #define SWITCH_1_PIN 19  // Primary switch (e.g., master power / mode selector)
 #define SWITCH_2_PIN 25  // Secondary switch (for future sub-modes or options)
@@ -12,13 +13,17 @@ TFTHandler tft;
 ToggleSwitch Switch1(SWITCH_1_PIN);  // Switch1 - Main control
 ToggleSwitch Switch2(SWITCH_2_PIN);  // Switch2 - Secondary control
 
+// Shared hardware objects (joysticks, pots, encoders, IMU)
+Hardware hw;
+
 // === Global switch states – accessible from any mode ===
 bool Switch1On = false;   // Current state of Switch1
 bool Switch2On = false;   // Current state of Switch2
 
 // Modes
 GamePadMode gamePadMode(tft);
-RemoteControlMode remoteControlMode(tft);
+RemoteControlMode remoteControlMode(tft, hw);
+RemoteGraphicMode remoteGraphicMode(tft, hw);
 
 // Current active mode
 Mode* currentMode = nullptr;
@@ -47,16 +52,24 @@ void loop() {
   Switch1On = Switch1.isOn();
   Switch2On = Switch2.isOn();
 
-  // === Mode switching based on Switch1 ===
+  // === Mode switching ===
   if (Switch1On && currentMode != &gamePadMode) {
     if (currentMode) currentMode->exit();
     currentMode = &gamePadMode;
     currentMode->enter();
   }
-  else if (!Switch1On && currentMode != &remoteControlMode) {
-    if (currentMode) currentMode->exit();
-    currentMode = &remoteControlMode;
-    currentMode->enter();
+  else if (!Switch1On) {
+    // When Switch1 is OFF we can choose between RemoteControl text mode
+    // and the new graphical joystick mode using Switch2.
+    if (Switch2On && currentMode != &remoteGraphicMode) {
+      if (currentMode) currentMode->exit();
+      currentMode = &remoteGraphicMode;
+      currentMode->enter();
+    } else if (!Switch2On && currentMode != &remoteControlMode) {
+      if (currentMode) currentMode->exit();
+      currentMode = &remoteControlMode;
+      currentMode->enter();
+    }
   }
 
   // Run current mode update
