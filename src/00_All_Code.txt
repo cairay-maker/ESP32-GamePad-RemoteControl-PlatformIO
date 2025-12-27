@@ -1,0 +1,1347 @@
+===== AnalogKeyboard.h =====
+#ifndef ANALOGKEYBOARD_H
+#define ANALOGKEYBOARD_H
+
+#include <Arduino.h>
+
+class AnalogKeyboard {
+public:
+  explicit AnalogKeyboard(int pin);
+  String getCurrentKey();      // ← Returns current key or "NONE"
+  String getPressedKey();      // ← Returns key only on new press
+
+private:
+  int pin;
+  String lastKey = "NONE";     // For edge detection
+};
+
+#endif
+
+
+===== GamePadMode.h =====
+#ifndef GAMEPADMODE_H
+#define GAMEPADMODE_H
+
+#include "Mode.h"
+
+class GamePadMode : public Mode {
+public:
+  explicit GamePadMode(TFTHandler& tft) : Mode(tft) {}
+  void enter() override;
+  void update() override;
+  void exit() override;
+};
+
+#endif
+
+
+===== Hardware.h =====
+#ifndef HARDWARE_H
+#define HARDWARE_H
+
+#include "Joystick.h"
+#include "AnalogKeyboard.h"
+#include "RotaryEncoder.h"
+#include "Potentiometer.h"
+#include "IMUReader.h"
+
+struct Hardware {
+  Joystick joyRight{36, 39, 1920, 1925, 100};
+  Joystick joyLeft{13, 12, 1910, 1995, 100};
+  AnalogKeyboard keyboard{34};
+  RotaryEncoder encoderRight{33, 32, 35};
+  RotaryEncoder encoderLeft{27, 26, 25};
+  RotaryEncoder encoderMiddle{31, 30, 29};
+  Potentiometer potLeft{15};
+  Potentiometer potMid{4};
+  Potentiometer potRight{14};
+  IMUReader imu;
+
+  Hardware() {}
+};
+
+#endif
+
+
+
+===== IMUReader.h =====
+#ifndef IMUREADER_H
+#define IMUREADER_H
+
+#include <Adafruit_LSM6DS33.h>
+
+class IMUReader {
+public:
+  bool begin();
+  void read();
+  float ax, ay, az, gx, gy, gz;
+
+private:
+  Adafruit_LSM6DS33 lsm6ds;
+};
+
+#endif
+
+
+===== Joystick.h =====
+#ifndef JOYSTICK_H
+#define JOYSTICK_H
+
+#include <Arduino.h>
+
+class Joystick {
+public:
+  // Constructor with optional custom center (default 2048)
+  Joystick(int pinX, int pinY, int centerX = 2048, int centerY = 2048, int deadzone = 100);
+
+  void update();                    // Read and process both axes
+
+  // 1. Raw values (direct from ADC)
+  int getRawX() const { return rawX; }
+  int getRawY() const { return rawY; }
+
+  // 2. Deadzoned values (centered, deadzone applied)
+  int getDeadzonedX() const { return deadzonedX; }
+  int getDeadzonedY() const { return deadzonedY; }
+
+  // 3. Mapped values (-1.0 to 1.0 float)
+  float getMappedX() const { return mappedX; }
+  float getMappedY() const { return mappedY; }
+
+private:
+  int pinX, pinY;
+  int centerX, centerY;
+  int deadzone;
+
+  int rawX = 0, rawY = 0;
+  int deadzonedX = 0, deadzonedY = 0;
+  float mappedX = 0.0f, mappedY = 0.0f;
+
+  static constexpr int ADC_MAX = 4095;
+};
+
+#endif
+
+
+===== Mode.h =====
+#ifndef MODE_H
+#define MODE_H
+
+#include "TFTHandler.h"
+
+class Mode {
+public:
+  explicit Mode(TFTHandler& tft) : tft(tft) {}
+  virtual ~Mode() = default;
+
+  virtual void enter() = 0;
+  virtual void update() = 0;     // Called every loop
+  virtual void exit() {}
+
+protected:
+  TFTHandler& tft;
+};
+
+#endif
+
+
+===== Potentiometer.h =====
+#ifndef POTENTIOMETER_H
+#define POTENTIOMETER_H
+
+#include <Arduino.h>
+
+class Potentiometer {
+public:
+  explicit Potentiometer(int pin);
+
+  void update();                                   // Read and process
+
+  int getRaw() const;                              // Raw ADC value (0-4095)
+
+  float getNormalized(bool applyDeadzone = true);  // -1.0 to 1.0 (with optional deadzone)
+  float getNormalizedRaw();                        // -1.0 to 1.0 full precision (no deadzone)
+
+  // Calibration
+  void beginCalibration(unsigned long durationMs = 5000);
+  bool updateCalibration();                        // Call during calibration
+  void endCalibration();
+  void printCalibration() const;
+  void setMinMaxCenter(int minV, int maxV, int centerV);
+
+  void setDeadzone(int dz) { deadzone = dz; }      // Change deadzone (default 100)
+
+private:
+  int pin;
+  int rawValue = 0;
+
+  int minVal = 0;
+  int maxVal = 4095;
+  int centerVal = 2048;
+  int deadzone = 100;  // Default ±100
+
+  bool calibrating = false;
+  unsigned long calibStart = 0;
+  unsigned long calibDuration = 5000;
+
+  float mapFloat(int val, int inMin, int inMax, float outMin, float outMax) const;
+};
+
+#endif
+
+
+===== RemoteControlMode.h =====
+#ifndef REMOTECONTROLMODE_H
+#define REMOTECONTROLMODE_H
+
+#include "Mode.h"
+#include "Hardware.h"
+
+class RemoteControlMode : public Mode {
+public:
+  // Constructor takes TFT reference and shared hardware
+  explicit RemoteControlMode(TFTHandler& tft, Hardware& hw);
+
+  void enter() override;
+  void update() override;
+  void exit() override;
+
+private:
+  // === References to shared input hardware ===
+  Joystick& joyRight;
+  // pinX=36 (logical X), pinY=39 (logical Y)
+  // centerX=1920, centerY=1925
+  // deadzone=100
+
+  // Left Joystick - swapped pins + calibrated center
+  Joystick& joyLeft;
+  // pinX=13 (logical X), pinY=12 (logical Y)
+  // centerX=1910, centerY=1995
+  // deadzone=100
+
+  // No inversion needed (remove any true/true if you added them)
+  // Just swap the order: Joystick(pinForLogicalX, pinForLogicalY)
+
+  AnalogKeyboard& keyboard;        // 5-button analog keyboard on GPIO34
+
+  RotaryEncoder& encoderRight;   // CLK, DT, SW
+  RotaryEncoder& encoderLeft;    // CLK, DT, SW (SW noted not working)
+
+  Potentiometer& potRight;         // Right pot
+  Potentiometer& potMid;            // Middle pot
+  Potentiometer& potLeft;          // Left pot
+
+  IMUReader& imu;                      // LSM6DS33 on SDA=21, SCL=22
+};
+
+#endif
+
+
+===== RemoteGraphicMode.h =====
+#ifndef REMOTEGRAPHICMODE_H
+#define REMOTEGRAPHICMODE_H
+
+#include "Mode.h"
+#include "Hardware.h"
+
+class RemoteGraphicMode : public Mode {
+public:
+  explicit RemoteGraphicMode(TFTHandler& tft, Hardware& hw);
+  void enter() override;
+  void update() override;
+  void exit() override;
+
+private:
+  // References to shared hardware (owned by main.cpp Hardware instance)
+  Joystick& joyRight;
+  Joystick& joyLeft;
+  AnalogKeyboard& keyboard;
+  RotaryEncoder& encoderRight;
+  RotaryEncoder& encoderLeft;
+  RotaryEncoder& encoderMiddle;
+  Potentiometer& potLeft;
+  Potentiometer& potMid;
+  Potentiometer& potRight;
+  IMUReader& imu;
+};
+
+#endif
+
+
+
+===== RotaryEncoder.h =====
+#ifndef ROTARYENCODER_H
+#define ROTARYENCODER_H
+
+#include <Arduino.h>
+
+class RotaryEncoder {
+public:
+  RotaryEncoder(int clkPin, int dtPin, int swPin = -1);  // swPin optional
+  long getCounter();             // Current position
+  bool isButtonPressed();        // True on new press (edge)
+
+private:
+  int clkPin, dtPin, swPin;
+  long counter = 0;
+  int lastState = 0;
+  bool lastSw = HIGH;
+  bool swPressed = false;
+
+  // State table for reliable decode (ignores invalid transitions)
+  static const int8_t table[16];
+};
+
+#endif
+
+
+===== TFTHandler.h =====
+#ifndef TFTHANDLER_H
+#define TFTHANDLER_H
+
+#include <TFT_eSPI.h>
+
+class TFTHandler {
+public:
+  TFTHandler();
+  void begin();
+  void clearScreen(uint16_t color = TFT_BLACK);
+  void drawCenteredText(const char* text, int y = 60, uint16_t color = TFT_WHITE, int textSize = 2);
+
+  // Add this: direct access to the TFT instance for advanced use
+  TFT_eSPI& getTFT() { return tft; }
+
+private:
+  TFT_eSPI tft;
+};
+
+#endif
+
+
+===== ToggleSwitch.h =====
+#ifndef TOGGLESWITCH_H
+#define TOGGLESWITCH_H
+
+class ToggleSwitch {
+public:
+  explicit ToggleSwitch(int pin);
+  bool isOn();                   // Returns true when switch is ON (LOW with pull-up)
+
+private:
+  int pin;
+  bool lastState = false;
+};
+
+#endif
+
+
+===== AnalogKeyboard.cpp =====
+#include "AnalogKeyboard.h"
+
+AnalogKeyboard::AnalogKeyboard(int pin) : pin(pin) {}
+
+String AnalogKeyboard::getCurrentKey() {
+  int val = analogRead(pin);
+
+  if (val > 4000) return "LEFT";
+  if (val > 3200 && val < 3700) return "UP";
+  if (val > 2500 && val < 2900) return "DOWN";
+  if (val > 1800 && val < 2150) return "RIGHT";
+  if (val > 600 && val < 1000) return "SELECT";
+
+  return "NONE";
+}
+
+String AnalogKeyboard::getPressedKey() {
+  String current = getCurrentKey();
+  String pressed = "NONE";
+
+  if (current != "NONE" && current != lastKey) {
+    pressed = current;
+  }
+
+  lastKey = current;
+  return pressed;
+}
+
+
+===== GamePadMode.cpp =====
+#include "GamePadMode.h"
+
+void GamePadMode::enter() {
+  tft.clearScreen();
+  tft.drawCenteredText("Game Pad", 60, TFT_GREEN, 3);
+}
+
+void GamePadMode::update() {
+  // Future: joystick, buttons, etc.
+}
+
+void GamePadMode::exit() {
+  // Cleanup if needed
+}
+
+
+===== IMUReader.cpp =====
+#include "IMUReader.h"
+#include <Wire.h>
+
+bool IMUReader::begin() {
+  Wire.begin(21, 22);  // SDA=21, SCL=22
+  delay(100);  // Small delay after begin
+  Wire.setClock(400000);  // ← ADD THIS LINE (400kHz Fast Mode)
+  if (!lsm6ds.begin_I2C(0x6B)) {
+    return false;
+  }
+  lsm6ds.setAccelRange(LSM6DS_ACCEL_RANGE_4_G);
+  lsm6ds.setGyroRange(LSM6DS_GYRO_RANGE_1000_DPS);
+  lsm6ds.setAccelDataRate(LSM6DS_RATE_208_HZ);
+  lsm6ds.setGyroDataRate(LSM6DS_RATE_208_HZ);
+  return true;
+}
+
+void IMUReader::read() {
+  sensors_event_t accel, gyro, temp;
+  lsm6ds.getEvent(&accel, &gyro, &temp);
+  ax = accel.acceleration.x;
+  ay = accel.acceleration.y;
+  az = accel.acceleration.z;
+  gx = gyro.gyro.x;
+  gy = gyro.gyro.y;
+  gz = gyro.gyro.z;
+}
+
+
+===== Joystick.cpp =====
+#include "Joystick.h"
+
+Joystick::Joystick(int pinX, int pinY, int centerX, int centerY, int deadzone)
+    : pinX(pinX), pinY(pinY), centerX(centerX), centerY(centerY), deadzone(deadzone)
+{
+  // Initial read to avoid garbage
+  update();
+}
+
+void Joystick::update() {
+  rawX = analogRead(pinX);
+  rawY = analogRead(pinY);
+
+  // Apply deadzone
+  int offsetX = rawX - centerX;
+  int offsetY = rawY - centerY;
+
+  if (abs(offsetX) < deadzone) offsetX = 0;
+  if (abs(offsetY) < deadzone) offsetY = 0;
+
+  // Map using actual observed range (replace with your values!)
+  const int minX = 0;   // ← Your measured min X
+  const int maxX = 4095;  // ← Your measured max X
+  const int minY = 0;   // ← Your measured min Y
+  const int maxY = 4095;  // ← Your measured max Y
+
+  // Symmetric mapping to -1.0 to 1.0
+  if (offsetX == 0) {
+    mappedX = 0.0f;
+  } else if (offsetX > 0) {
+    mappedX = static_cast<float>(offsetX) / (maxX - centerX);
+  } else {
+    mappedX = static_cast<float>(offsetX) / (centerX - minX);
+  }
+
+  if (offsetY == 0) {
+    mappedY = 0.0f;
+  } else if (offsetY > 0) {
+    mappedY = static_cast<float>(offsetY) / (maxY - centerY);
+  } else {
+    mappedY = static_cast<float>(offsetY) / (centerY - minY);
+  }
+
+  // Clamp just in case
+  if (mappedX > 1.0f) mappedX = 1.0f;
+  if (mappedX < -1.0f) mappedX = -1.0f;
+  if (mappedY > 1.0f) mappedY = 1.0f;
+  if (mappedY < -1.0f) mappedY = -1.0f;
+}
+
+
+===== main.cpp =====
+#include <Arduino.h>
+#include "TFTHandler.h"
+#include "ToggleSwitch.h"
+#include "GamePadMode.h"
+#include "RemoteControlMode.h"
+#include "RemoteGraphicMode.h"
+
+#define SWITCH_1_PIN 19  // Primary switch (e.g., master power / mode selector)
+#define SWITCH_2_PIN 25  // Secondary switch (for future sub-modes or options)
+
+// Global objects
+TFTHandler tft;
+ToggleSwitch Switch1(SWITCH_1_PIN);  // Switch1 - Main control
+ToggleSwitch Switch2(SWITCH_2_PIN);  // Switch2 - Secondary control
+
+// Shared hardware objects (joysticks, pots, encoders, IMU)
+Hardware hw;
+
+// === Global switch states – accessible from any mode ===
+bool Switch1On = false;   // Current state of Switch1
+bool Switch2On = false;   // Current state of Switch2
+
+// Modes
+GamePadMode gamePadMode(tft);
+RemoteControlMode remoteControlMode(tft, hw);
+RemoteGraphicMode remoteGraphicMode(tft, hw);
+
+// Current active mode
+Mode* currentMode = nullptr;
+
+void setup() {
+  Serial.begin(115200);
+  delay(2000);  // Critical boot delay for stability
+
+  Serial.println("\n=== ESP32 Dual Switch Controller ===");
+  Serial.println("Switch1 (Pin 19): Primary Mode");
+  Serial.println("Switch2 (Pin 25): Secondary / Future Options");
+  Serial.println("Current: Switch1 OFF → Remote Control Mode");
+  Serial.println("         Switch1 ON  → Game Pad Mode");
+  Serial.println("Started - Dec 25, 2025");
+
+  tft.begin();
+  delay(500);
+
+  // Default to Remote Control mode
+  currentMode = &remoteControlMode;
+  currentMode->enter();
+}
+
+void loop() {
+  // === Update global switch states every loop ===
+  Switch1On = Switch1.isOn();
+  Switch2On = Switch2.isOn();
+
+  // === Mode switching ===
+  if (Switch1On && currentMode != &gamePadMode) {
+    if (currentMode) currentMode->exit();
+    currentMode = &gamePadMode;
+    currentMode->enter();
+  }
+  else if (!Switch1On) {
+    // When Switch1 is OFF we can choose between RemoteControl text mode
+    // and the new graphical joystick mode using Switch2.
+    if (Switch2On && currentMode != &remoteGraphicMode) {
+      if (currentMode) currentMode->exit();
+      currentMode = &remoteGraphicMode;
+      currentMode->enter();
+    } else if (!Switch2On && currentMode != &remoteControlMode) {
+      if (currentMode) currentMode->exit();
+      currentMode = &remoteControlMode;
+      currentMode->enter();
+    }
+  }
+
+  // Run current mode update
+  if (currentMode) {
+    currentMode->update();
+  }
+
+  delay(10);
+}
+
+
+===== Potentiometer.cpp =====
+#include "Potentiometer.h"
+#include <Arduino.h>
+
+Potentiometer::Potentiometer(int pin)
+    : pin(pin)
+{
+  update();  // Initial read
+}
+
+void Potentiometer::update() {
+  rawValue = analogRead(pin);
+}
+
+int Potentiometer::getRaw() const {
+  return rawValue;
+}
+
+float Potentiometer::getNormalized(bool applyDeadzone) {
+  update();  // Ensure latest value
+
+  int value = rawValue;
+
+  if (applyDeadzone && abs(value - centerVal) < deadzone) {
+    value = centerVal;
+  }
+
+  if (value <= centerVal) {
+    if (value == centerVal) return 0.0f;
+    return mapFloat(value, minVal, centerVal, -1.0f, 0.0f);
+  } else {
+    return mapFloat(value, centerVal, maxVal, 0.0f, 1.0f);
+  }
+}
+
+float Potentiometer::getNormalizedRaw() {
+  return getNormalized(false);  // Full precision, no deadzone
+}
+
+void Potentiometer::beginCalibration(unsigned long durationMs) {
+  calibrating = true;
+  calibStart = millis();
+  calibDuration = durationMs;
+  minVal = rawValue;
+  maxVal = rawValue;
+  Serial.println("Pot calibration started - move to extremes");
+}
+
+bool Potentiometer::updateCalibration() {
+  if (!calibrating) return false;
+
+  update();
+
+  if (rawValue < minVal) minVal = rawValue;
+  if (rawValue > maxVal) maxVal = rawValue;
+
+  if (millis() - calibStart >= calibDuration) {
+    centerVal = (minVal + maxVal) / 2;
+    calibrating = false;
+    printCalibration();
+    return true;
+  }
+  return false;
+}
+
+void Potentiometer::endCalibration() {
+  if (calibrating) {
+    centerVal = (minVal + maxVal) / 2;
+    calibrating = false;
+    printCalibration();
+  }
+}
+
+void Potentiometer::printCalibration() const {
+  Serial.printf("Pot calibrated: min=%d, max=%d, center=%d, deadzone=±%d\n",
+                minVal, maxVal, centerVal, deadzone);
+}
+
+void Potentiometer::setMinMaxCenter(int minV, int maxV, int centerV) {
+  minVal = minV;
+  maxVal = maxV;
+  centerVal = centerV;
+  calibrating = false;
+}
+
+float Potentiometer::mapFloat(int val, int inMin, int inMax, float outMin, float outMax) const {
+  return outMin + (outMax - outMin) * (val - inMin) / float(inMax - inMin);
+}
+
+
+===== RemoteControlMode.cpp =====
+#include "RemoteControlMode.h"
+#include <Arduino.h>
+
+extern bool Switch1On;
+extern bool Switch2On;
+
+RemoteControlMode::RemoteControlMode(TFTHandler& tftRef, Hardware& hw)
+    : Mode(tftRef),
+      joyRight(hw.joyRight), joyLeft(hw.joyLeft), keyboard(hw.keyboard),
+      encoderRight(hw.encoderRight), encoderLeft(hw.encoderLeft),
+      potRight(hw.potRight), potMid(hw.potMid), potLeft(hw.potLeft), imu(hw.imu)
+{
+  Serial.println("RemoteControlMode constructed - All sensors ready (raw joystick printing enabled)");
+}
+
+void RemoteControlMode::enter() {
+  tft.clearScreen();
+  tft.drawCenteredText("Remote Control", 8, TFT_CYAN, 1);
+
+  delay(500);  // Extra safety
+
+  if (!imu.begin()) {
+    Serial.println("IMU init failed - check wiring!");
+  } else {
+    Serial.println("IMU initialized successfully");
+  }
+}
+
+void RemoteControlMode::update() {
+
+  // === Read all current values ===
+  String currentKey = keyboard.getCurrentKey();
+  String pressedKey = keyboard.getPressedKey();
+
+  // Update joysticks (applies deadzone and mapping)
+  joyRight.update();
+  joyLeft.update();
+
+  // === RAW VALUES FOR CALIBRATION ===
+  int rawRX = joyRight.getRawX();
+  int rawRY = joyRight.getRawY();
+  int rawLX = joyLeft.getRawX();
+  int rawLY = joyLeft.getRawY();
+
+  // Mapped values for display
+  float joyRX = joyRight.getMappedX();
+  float joyRY = joyRight.getMappedY();
+  float joyLX = joyLeft.getMappedX();
+  float joyLY = joyLeft.getMappedY();
+
+  long encRight = encoderRight.getCounter();
+  long encLeft  = encoderLeft.getCounter();
+  bool encRBtn  = encoderRight.isButtonPressed();
+  bool encLBtn  = encoderLeft.isButtonPressed();
+
+  // === Potentiometers ===
+  potLeft.update();
+  potMid.update();
+  potRight.update();
+
+  int potL_raw = potLeft.getRaw();
+  int potM_raw = potMid.getRaw();
+  int potR_raw = potRight.getRaw();
+
+  // Normalized values for display (with deadzone)
+  float potL_norm = potLeft.getNormalized();
+  float potM_norm = potMid.getNormalized();
+  float potR_norm = potRight.getNormalized();
+
+  // === Safe IMU read at 10Hz ===
+  static bool imuReady = false;
+  if (!imuReady) {
+    if (imu.begin()) {
+      imuReady = true;
+    } else {
+      return;  // Try again next loop
+    }
+  }
+  static unsigned long lastIMURead = 0;
+  if (millis() - lastIMURead >= 100 && imuReady) {
+    imu.read();
+    lastIMURead = millis();
+  }
+
+  // === Flicker-free redraw only on change ===
+  static String lastKey = "";
+  static float lastRX = -10.0f, lastRY = -10.0f, lastLX = -10.0f, lastLY = -10.0f;
+  static long lastEncR = -999, lastEncL = -999;
+  static bool lastRBtn = false, lastLBtn = false;
+  static float lastPotL_norm = -10.0f, lastPotM_norm = -10.0f, lastPotR_norm = -10.0f;
+  static float lastAX = -999, lastAY = -999, lastAZ = -999;
+  static float lastGX = -999, lastGY = -999, lastGZ = -999;
+
+  bool changed = (currentKey != lastKey) ||
+                 (abs(joyRX - lastRX) > 0.05f) || (abs(joyRY - lastRY) > 0.05f) ||
+                 (abs(joyLX - lastLX) > 0.05f) || (abs(joyLY - lastLY) > 0.05f) ||
+                 (encRight != lastEncR) || (encLeft != lastEncL) ||
+                 (encRBtn != lastRBtn) || (encLBtn != lastLBtn) ||
+                 (abs(potL_norm - lastPotL_norm) > 0.05f) ||
+                 (abs(potM_norm - lastPotM_norm) > 0.05f) ||
+                 (abs(potR_norm - lastPotR_norm) > 0.05f) ||
+                 (abs(imu.ax - lastAX) > 0.1) || (abs(imu.ay - lastAY) > 0.1) || (abs(imu.az - lastAZ) > 0.1) ||
+                 (abs(imu.gx - lastGX) > 1.0) || (abs(imu.gy - lastGY) > 1.0) || (abs(imu.gz - lastGZ) > 1.0);
+
+  if (!changed) {
+    delay(50);
+    return;
+  }
+
+  // === Print to Serial Monitor whenever there is a change ===
+  /*
+  Serial.printf("Keyboard:\t%s\n", pressedKey="NONE" ? "None":pressedKey.c_str());
+  Serial.printf("RAW JS_R:\tX=%4d\tY=%4d\t\t JS_R:\tX=%4d\tY=%4d\n", rawLX, rawLY, rawRX, rawRY);
+  Serial.printf("Enc:\tL=%4d %s\tR=%5ld %s\n",
+                encLeft,  encLBtn ? "Select" : "None",
+                encRight, encRBtn ? "Select" : "None");
+  Serial.printf("POT RAW:\tL=%4d\tM=%4d\tR=%4d\n", potL_raw, potM_raw, potR_raw);
+  Serial.printf("IMU Accl X:%.1f Y:%.1f Z:%.1f  Gyro X:%.1f Y:%.1f Z:%.1f\n",
+                imu.ax, imu.ay, imu.az, imu.gx, imu.gy, imu.gz);
+  Serial.printf("\n");
+  */
+  Serial.printf("Key:%s JL X%4d Y%4d JR X%4d Y%4d EncL%2d %s EncR%2d POT:L%4d M%4d R%4d IMU AcclX:%+4.1f Y:%+4.1f Z:%+4.1f  Gyro X:%+4.1f Y:%+4.1f Z:%+4.1f\n",
+                pressedKey == "NONE" ? "None" : pressedKey.c_str(),
+                rawLX, rawLY,
+                rawRX, rawRY,
+                encLeft,  encLBtn ? "Select" : "None",
+                encRight, 
+                potL_raw, potM_raw, potR_raw,
+                imu.ax, imu.ay, imu.az,
+                imu.gx, imu.gy, imu.gz);
+
+  // Update last values
+  lastKey = currentKey;
+  lastRX = joyRX; lastRY = joyRY;
+  lastLX = joyLX; lastLY = joyLY;
+  lastEncR = encRight; lastEncL = encLeft;
+  lastRBtn = encRBtn; lastLBtn = encLBtn;
+  lastPotL_norm = potL_norm; lastPotM_norm = potM_norm; lastPotR_norm = potR_norm;
+  lastAX = imu.ax; lastAY = imu.ay; lastAZ = imu.az;
+  lastGX = imu.gx; lastGY = imu.gy; lastGZ = imu.gz;
+
+  // === Display settings ===
+  const int textSize = 1;
+  const int baseCharHeight = 8;
+  const int charHeight = baseCharHeight * textSize;
+  const int lineSpacing = 4;
+  const int startX = 10;
+  const int startY = 24;
+
+  int lineNum = 0;
+
+  tft.getTFT().setTextSize(textSize);
+
+  auto printLine = [&](uint16_t color, const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    char buffer[80];
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    int y = startY + (lineNum++ * (charHeight + lineSpacing));
+    int lineTop = y - (charHeight - 4); // Approximate top of text (adjust -2 if needed)
+    tft.getTFT().fillRect(startX, lineTop, 154, charHeight + 3, TFT_BLACK);
+    //tft.getTFT().fillRect(startX, y - charHeight/2 + 2, 140, charHeight + 2, TFT_BLACK);
+    tft.getTFT().setTextColor(color);
+    tft.getTFT().setCursor(startX, y);
+    tft.getTFT().println(buffer);
+  };
+
+  // === Lines ===
+  printLine(TFT_LIGHTGREY, "Switch 1:%s Switch 2:%s", Switch1On ? "On " : "Off", Switch2On ? "On " : "Off");
+
+  if (currentKey != "NONE") {
+    printLine(TFT_RED, "Keyboard: %s", currentKey.c_str());
+  } else {
+    printLine(TFT_YELLOW, "Keyboard: None");
+  }
+
+  printLine(TFT_SKYBLUE, "JS_R: %+5.2f %+5.2f", joyRX, joyRY);
+  printLine(TFT_SKYBLUE, "JS_L: %+5.2f %+5.2f", joyLX, joyLY);
+
+  printLine(TFT_ORANGE, "EncR: %3ld  %s", encRight, encRBtn ? "Select" : "None");
+  printLine(TFT_ORANGE, "EncL: %3ld  %s", encLeft,  encLBtn ? "Select" : "None");
+
+  // Pots - normalized -1.00 to 1.00 (with deadzone for stable display)
+  printLine(TFT_GREEN, "PotL:%+4.1f M:%+4.1f R:%+4.1f", potL_norm, potM_norm, potR_norm);
+
+  // IMU lines
+  printLine(TFT_MAGENTA, "AcclX:%+4.1f Y:%+4.1f Z:%+4.1f", imu.ax, imu.ay, imu.az);
+  printLine(TFT_MAGENTA, "GyroX:%+4.1f Y:%+4.1f Z:%+4.1f", imu.gx, imu.gy, imu.gz);
+
+  delay(50);
+}
+
+void RemoteControlMode::exit() {
+  Serial.println("Leaving Remote Control Mode");
+}
+
+
+===== RemoteGraphicMode.cpp =====
+#include "RemoteGraphicMode.h"
+#include <Arduino.h>
+#include <math.h>
+
+static const int JOYSTICK_DOT = 3; // smaller dot for both joysticks
+static const uint16_t JOYSTICK_COLOR = TFT_RED; // use red for joystick dots
+static const uint16_t ENCODER_COLOR = 0xFC60; // reddish-orange (RGB565)
+static const int RADIAL_POT_R = 12; // outer radius for radial encoders
+static const int RADIAL_STEPS = 16; // map ±16 counts -> ±1.0
+
+RemoteGraphicMode::RemoteGraphicMode(TFTHandler& tftRef, Hardware& hw)
+  : Mode(tftRef),
+    joyRight(hw.joyRight), joyLeft(hw.joyLeft), keyboard(hw.keyboard),
+    encoderRight(hw.encoderRight), encoderLeft(hw.encoderLeft), encoderMiddle(hw.encoderMiddle),
+    potLeft(hw.potLeft), potMid(hw.potMid), potRight(hw.potRight), imu(hw.imu)
+{
+}
+
+void RemoteGraphicMode::enter() {
+  tft.clearScreen();
+  tft.drawCenteredText("Remote Graphic", 8, TFT_CYAN, 1);
+  // Draw static circles for left and right joysticks at fixed coordinates
+  TFT_eSPI& disp = tft.getTFT();
+  const int left_cx = 23;
+  const int right_cx = 136; // fixed right position per request
+  const int cy = 110;
+  const int radius = 15;
+
+  disp.drawCircle(left_cx, cy, radius, TFT_WHITE);
+    disp.fillCircle(left_cx, cy, JOYSTICK_DOT, JOYSTICK_COLOR);
+
+  disp.drawCircle(right_cx, cy, radius, TFT_WHITE);
+    disp.fillCircle(right_cx, cy, JOYSTICK_DOT, JOYSTICK_COLOR);
+
+  // Draw rectangle frame (upper-left corner x=46, y=88)
+  const int rect_x = 46;
+  const int rect_y = 94;
+  const int rect_w = 69;
+  const int rect_h = 33;
+    disp.drawRect(rect_x, rect_y, rect_w, rect_h, TFT_RED);
+
+  // Draw IMU reserved area (upper box) at x=46, y=38, w=69, h=40
+  const int imu_x = 46;
+    const int imu_y = 61;
+    const int imu_w = 69;
+    const int imu_h = 30;
+  disp.drawRect(imu_x, imu_y, imu_w, imu_h, TFT_CYAN);
+  // Reserve inner area (fill with black) for future IMU graphs
+  disp.fillRect(imu_x + 1, imu_y + 12, imu_w - 2, imu_h - 13, TFT_BLACK);
+  // Draw a fixed outer circle (play area) and initial ball centered inside the IMU box
+  const int imu_cx = imu_x + imu_w / 2;
+  const int imu_cy = imu_y + imu_h / 2;
+  const int ball_r = 4;
+  const int fixed_r = 10; // slightly bigger than ball
+  // clear inner IMU area already done above; draw fixed circle outline
+  disp.drawCircle(imu_cx, imu_cy, fixed_r, TFT_WHITE);
+  // draw initial ball at center
+  disp.fillCircle(imu_cx, imu_cy, ball_r, TFT_YELLOW);
+
+  // Draw circular buttons (outline rings) with provided coordinates
+  // Button coords and radius per request
+  const int btn_left_x = 56;
+  const int btn_left_y = 110;
+    const int btn_right_x = 82;
+  const int btn_right_y = 110;
+  const int btn_up_x = 69;
+  const int btn_up_y = 102;
+  const int btn_down_x = 69;
+  const int btn_down_y = 118;
+  const int btn_select_x = 105;
+  const int btn_select_y = 110;
+  const int btn_r = 6; // requested radius
+  const int inset = 2;
+
+  // Draw rings: outer yellow, inner black to create visible yellow outline
+  disp.fillCircle(btn_left_x, btn_left_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_left_x, btn_left_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_right_x, btn_right_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_right_x, btn_right_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_up_x, btn_up_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_up_x, btn_up_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_down_x, btn_down_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_down_x, btn_down_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_select_x, btn_select_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_select_x, btn_select_y, btn_r - inset, TFT_BLACK);
+
+  // Draw encoder rings and initial values (previous rotary encoders)
+  const int encL_cx = 23;
+  const int encL_cy = 72;
+  const int encR_cx = 136;
+  const int encR_cy = 72; // updated per request
+  const int enc_outer_r = 13;
+  const int enc_inner_r = 10;
+
+  // Left encoder ring (reddish-orange)
+  disp.fillCircle(encL_cx, encL_cy, enc_outer_r, ENCODER_COLOR);
+  disp.fillCircle(encL_cx, encL_cy, enc_inner_r, TFT_BLACK);
+  // Right encoder ring (reddish-orange)
+  disp.fillCircle(encR_cx, encR_cy, enc_outer_r, ENCODER_COLOR);
+  disp.fillCircle(encR_cx, encR_cy, enc_inner_r, TFT_BLACK);
+
+  // Initial encoder text
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%+2ld", encoderLeft.getCounter());
+  disp.setTextSize(1);
+  disp.setTextColor(ENCODER_COLOR);
+  int16_t tw = disp.textWidth(buf);
+  disp.setCursor(encL_cx - tw/2, encL_cy - 4);
+  disp.println(buf);
+
+  snprintf(buf, sizeof(buf), "%+2ld", encoderRight.getCounter());
+  disp.setTextColor(ENCODER_COLOR);
+  tw = disp.textWidth(buf);
+  disp.setCursor(encR_cx - tw/2, encR_cy - 4);
+  disp.println(buf);
+
+  // Draw three radial encoders (Left, Middle, Right) near top area
+  const int rPotL_x = 40;
+  const int rPotM_x = 80;
+  const int rPotR_x = 120;
+  const int rPot_y = 35;
+  // outer circle outlines (use white outline, inner cleared)
+  disp.drawCircle(rPotL_x, rPot_y, RADIAL_POT_R, TFT_WHITE);
+  disp.fillCircle(rPotL_x, rPot_y, RADIAL_POT_R - 3, TFT_BLACK);
+  disp.drawCircle(rPotM_x, rPot_y, RADIAL_POT_R, TFT_WHITE);
+  disp.fillCircle(rPotM_x, rPot_y, RADIAL_POT_R - 3, TFT_BLACK);
+  disp.drawCircle(rPotR_x, rPot_y, RADIAL_POT_R, TFT_WHITE);
+  disp.fillCircle(rPotR_x, rPot_y, RADIAL_POT_R - 3, TFT_BLACK);
+  // initial radial wipes (center line) in per-dial colors
+  disp.drawLine(rPotL_x, rPot_y, rPotL_x, rPot_y - RADIAL_POT_R, TFT_RED);
+  disp.drawLine(rPotM_x, rPot_y, rPotM_x, rPot_y - RADIAL_POT_R, TFT_GREEN);
+  disp.drawLine(rPotR_x, rPot_y, rPotR_x, rPot_y - RADIAL_POT_R, TFT_BLUE);
+}
+
+void RemoteGraphicMode::update() {
+  // Update both joysticks
+  joyLeft.update();
+  joyRight.update();
+
+  // Read current analog keyboard state (UP/DOWN/LEFT/RIGHT/SELECT/NONE)
+  String key = keyboard.getCurrentKey();
+
+  float lmx = joyLeft.getMappedX();
+  float lmy = joyLeft.getMappedY();
+  float rmx = joyRight.getMappedX();
+  float rmy = joyRight.getMappedY();
+
+  TFT_eSPI& disp = tft.getTFT();
+  const int left_cx = 23;
+  const int right_cx = 136; // fixed per request
+  const int cy = 110;
+  const int radius = 15;
+
+  int lx = left_cx + static_cast<int>(lmx * (radius - 6));
+  int ly = cy - static_cast<int>(lmy * (radius - 6));
+
+  int rx = right_cx + static_cast<int>(rmx * (radius - 6));
+  int ry = cy - static_cast<int>(rmy * (radius - 6));
+
+  // Clamp to display bounds to avoid drawing off-screen
+  lx = constrain(lx, 0, disp.width() - 1);
+  ly = constrain(ly, 0, disp.height() - 1);
+  rx = constrain(rx, 0, disp.width() - 1);
+  ry = constrain(ry, 0, disp.height() - 1);
+
+  static bool first = true;
+  static int lastLX = left_cx, lastLY = cy;
+  static int lastRX = right_cx, lastRY = cy;
+
+  if (first) {
+    lastLX = left_cx; lastLY = cy;
+    lastRX = right_cx; lastRY = cy;
+    first = false;
+  }
+
+  // Update left dot
+  if (lastLX != lx || lastLY != ly) {
+    disp.fillCircle(lastLX, lastLY, JOYSTICK_DOT, TFT_BLACK);
+    disp.drawCircle(left_cx, cy, radius, TFT_WHITE);
+      disp.fillCircle(lx, ly, JOYSTICK_DOT, JOYSTICK_COLOR);
+    lastLX = lx; lastLY = ly;
+  }
+
+  // Update right dot
+  if (lastRX != rx || lastRY != ry) {
+    disp.fillCircle(lastRX, lastRY, JOYSTICK_DOT, TFT_BLACK);
+    disp.drawCircle(right_cx, cy, radius, TFT_WHITE);
+      disp.fillCircle(rx, ry, JOYSTICK_DOT, JOYSTICK_COLOR);
+    lastRX = rx; lastRY = ry;
+  }
+
+  // Update encoder displays and right-button fill toggle
+  const int encL_cx = 23;
+  const int encL_cy = 72;
+  const int encR_cx = 136;
+  const int encR_cy = 72;
+  const int enc_outer_r = 13;
+  const int enc_inner_r = 10;
+
+  static long lastEncL = LONG_MIN;
+  static long lastEncR = LONG_MIN;
+
+  long curEncL = encoderLeft.getCounter();
+  long curEncR = encoderRight.getCounter();
+
+  // update potentiometers for radial displays
+  potLeft.update();
+  potMid.update();
+  potRight.update();
+  float potL_norm = potLeft.getNormalized();
+  float potM_norm = potMid.getNormalized();
+  float potR_norm = potRight.getNormalized();
+
+  // --- IMU-driven rolling ball ---
+  // IMU box geometry (must match enter())
+  const int imu_x = 46;
+  const int imu_y = 61;
+  const int imu_w = 69;
+  const int imu_h = 30;
+  const int imu_cx = imu_x + imu_w / 2;
+  const int imu_cy = imu_y + imu_h / 2;
+  const int ball_r = 4;
+  const int fixed_r = 10;
+
+  // Read IMU and map to constrained values
+  imu.read();
+  float ax = imu.ax; // positive -> roll left per request
+  float ay = imu.ay; // positive -> roll up per request
+  // constrain to requested ranges
+  ax = constrain(ax, -4.0f, 4.0f);
+  ay = constrain(ay, -2.0f, 2.0f);
+  // normalize to -1..1
+  float nx = ax / 4.0f;
+  float ny = ay / 2.0f;
+
+  // Map normalized values to pixel offsets inside the IMU rectangle
+  // available travel is rectangle half-size minus ball radius and a 1px margin
+  int availX = (imu_w / 2) - ball_r - 1;
+  int availY = (imu_h / 2) - ball_r - 1;
+  // positive ax -> ball moves left (negative x offset)
+  int offx = static_cast<int>(-nx * availX);
+  int offy = static_cast<int>(-ny * availY);
+
+  int ballX = imu_cx + offx;
+  int ballY = imu_cy + offy;
+
+  static int lastBallX = imu_cx;
+  static int lastBallY = imu_cy;
+  // erase last ball and redraw fixed circle to avoid artifacts
+  if (lastBallX != ballX || lastBallY != ballY) {
+    // Erase previous ball using inner IMU background color, then restore IMU box outline
+    disp.fillCircle(lastBallX, lastBallY, ball_r + 1, TFT_BLACK);
+    // Redraw inner IMU fill area and outline to avoid erasing borders
+    disp.fillRect(imu_x + 1, imu_y + 12, imu_w - 2, imu_h - 13, TFT_BLACK);
+    disp.drawRect(imu_x, imu_y, imu_w, imu_h, TFT_CYAN);
+    // Redraw fixed circle on top of the restored background
+    disp.drawCircle(imu_cx, imu_cy, fixed_r, TFT_WHITE);
+    lastBallX = ballX; lastBallY = ballY;
+  }
+  // draw new ball
+  disp.fillCircle(ballX, ballY, ball_r, TFT_YELLOW);
+
+  if (curEncL != lastEncL) {
+    // redraw left ring (reddish-orange outline)
+    disp.fillCircle(encL_cx, encL_cy, enc_outer_r, ENCODER_COLOR);
+    disp.fillCircle(encL_cx, encL_cy, enc_inner_r, TFT_BLACK);
+    // draw value
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%+2ld", curEncL);
+    disp.setTextSize(1);
+    disp.setTextColor(ENCODER_COLOR);
+    int16_t tw = disp.textWidth(buf);
+    disp.setCursor(encL_cx - tw/2, encL_cy - 4);
+    disp.println(buf);
+    lastEncL = curEncL;
+  }
+
+  // Radial encoders: Left, Middle, Right at y=30 with outer radius RADIAL_POT_R
+  const int rPotL_x = 40;
+  const int rPotM_x = 80;
+  const int rPotR_x = 120;
+  const int rPot_y = 35;
+
+  auto drawRadial = [&](int cx, int cy, int r, float v, uint16_t textColor) {
+    // v is normalized in [-1,1]
+    if (v > 1.0f) v = 1.0f; if (v < -1.0f) v = -1.0f;
+    // clear inner area and redraw outer ring (white outline)
+    disp.fillCircle(cx, cy, r - 3, TFT_BLACK);
+    disp.drawCircle(cx, cy, r, TFT_WHITE);
+
+    const float start = -M_PI_2; // top
+    const float sweep = 180.0f * (M_PI / 180.0f); // ±180 degrees full range
+    float end = start + v * sweep;
+
+    // If v == 0: draw single vertical center line in dial color
+    if (fabs(v) < 1e-6) {
+      disp.drawLine(cx, cy, cx, cy - r, textColor);
+    } else {
+      // draw radial wipe from start to end (step ~3 degrees)
+      const float step = 3.0f * (M_PI / 180.0f);
+      if (end > start) {
+        for (float a = start; a <= end; a += step) {
+          int x = cx + static_cast<int>(cos(a) * r);
+          int y = cy + static_cast<int>(sin(a) * r);
+          disp.drawLine(cx, cy, x, y, textColor);
+        }
+      } else {
+        for (float a = start; a >= end; a -= step) {
+          int x = cx + static_cast<int>(cos(a) * r);
+          int y = cy + static_cast<int>(sin(a) * r);
+          disp.drawLine(cx, cy, x, y, textColor);
+        }
+      }
+    }
+
+    // Draw the numeric value centered below the circle
+    char valbuf[16];
+    snprintf(valbuf, sizeof(valbuf), "%+5.2f", v);
+    disp.setTextSize(1);
+    int16_t tw = disp.textWidth(valbuf);
+    int textX = cx - tw / 2;
+    int textY = cy + r + 2;
+    // clear previous text area
+    disp.fillRect(textX - 1, textY - 1, tw + 2, 10, TFT_BLACK);
+    disp.setTextColor(textColor);
+    disp.setCursor(textX, textY);
+    disp.println(valbuf);
+  };
+
+  // Only redraw radial encoders when changed
+  static float lastRadL = 9999.0f, lastRadM = 9999.0f, lastRadR = 9999.0f;
+  if (fabs(potL_norm - lastRadL) > 0.001f) { drawRadial(rPotL_x, rPot_y, RADIAL_POT_R, potL_norm, TFT_RED); lastRadL = potL_norm; }
+  if (fabs(potM_norm - lastRadM) > 0.001f) { drawRadial(rPotM_x, rPot_y, RADIAL_POT_R, potM_norm, TFT_GREEN); lastRadM = potM_norm; }
+  if (fabs(potR_norm - lastRadR) > 0.001f) { drawRadial(rPotR_x, rPot_y, RADIAL_POT_R, potR_norm, TFT_BLUE); lastRadR = potR_norm; }
+
+  // Right encoder highlight: blink once on press (redraw on press AND release)
+  static bool lastRightPressed = false;
+  bool rightPressed = encoderRight.isButtonPressed();
+
+  if (curEncR != lastEncR || rightPressed != lastRightPressed) {
+    // redraw right ring; if currently pressed fill inner with YELLOW, otherwise black
+    disp.fillCircle(encR_cx, encR_cy, enc_outer_r, ENCODER_COLOR);
+    if (rightPressed) {
+      disp.fillCircle(encR_cx, encR_cy, enc_inner_r, TFT_YELLOW);
+    } else {
+      disp.fillCircle(encR_cx, encR_cy, enc_inner_r, TFT_BLACK);
+    }
+    // draw encoder value
+    char buf2[16];
+    snprintf(buf2, sizeof(buf2), "%+2ld", curEncR);
+    disp.setTextSize(1);
+    disp.setTextColor(ENCODER_COLOR);
+    int16_t tw2 = disp.textWidth(buf2);
+    disp.setCursor(encR_cx - tw2/2, encR_cy - 4);
+    disp.println(buf2);
+    lastEncR = curEncR;
+    lastRightPressed = rightPressed;
+  }
+
+  // Update D-pad/select visuals: draw yellow outline rings then fill active key
+  const int btn_left_x = 56;
+  const int btn_left_y = 110;
+    const int btn_right_x = 82;
+  const int btn_right_y = 110;
+  const int btn_up_x = 69;
+  const int btn_up_y = 102;
+  const int btn_down_x = 69;
+  const int btn_down_y = 118;
+  const int btn_select_x = 105;
+  const int btn_select_y = 110;
+  const int btn_r = 6;
+  const int inset = 2;
+
+  // Draw rings (outline)
+  disp.fillCircle(btn_left_x, btn_left_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_left_x, btn_left_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_right_x, btn_right_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_right_x, btn_right_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_up_x, btn_up_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_up_x, btn_up_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_down_x, btn_down_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_down_x, btn_down_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_select_x, btn_select_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_select_x, btn_select_y, btn_r - inset, TFT_BLACK);
+
+  // Fill active key with solid yellow
+  if (key == "UP") {
+    disp.fillCircle(btn_up_x, btn_up_y, btn_r, TFT_YELLOW);
+  } else if (key == "DOWN") {
+    disp.fillCircle(btn_down_x, btn_down_y, btn_r, TFT_YELLOW);
+  } else if (key == "LEFT") {
+    disp.fillCircle(btn_left_x, btn_left_y, btn_r, TFT_YELLOW);
+  } else if (key == "RIGHT") {
+    disp.fillCircle(btn_right_x, btn_right_y, btn_r, TFT_YELLOW);
+  } else if (key == "SELECT") {
+    disp.fillCircle(btn_select_x, btn_select_y, btn_r, TFT_YELLOW);
+  }
+
+  delay(30);
+}
+
+void RemoteGraphicMode::exit() {
+  // nothing special
+}
+
+
+
+===== RotaryEncoder.cpp =====
+#include "RotaryEncoder.h"
+
+// State transition table for robust rotary decoding
+// Indexes: previous state (2 bits CLK/DT) << 2 | current state
+const int8_t RotaryEncoder::table[16] = {
+  0,  -1,  1,  0,   // 00xx
+  1,   0,  0, -1,   // 01xx
+  -1,   0,  0,  1,   // 10xx
+  0,   1, -1,  0    // 11xx
+};
+
+RotaryEncoder::RotaryEncoder(int clk, int dt, int sw)
+    : clkPin(clk), dtPin(dt), swPin(sw) {
+  pinMode(clkPin, INPUT_PULLUP);
+  pinMode(dtPin, INPUT_PULLUP);
+  if (swPin != -1) pinMode(swPin, INPUT_PULLUP);
+
+  // Read initial state
+  lastState = (digitalRead(clkPin) << 1) | digitalRead(dtPin);
+}
+
+long RotaryEncoder::getCounter() {
+  int currentState = (digitalRead(clkPin) << 1) | digitalRead(dtPin);
+  if (currentState != lastState) {
+    counter += table[(lastState << 2) | currentState];
+    lastState = currentState;
+  }
+  return counter;
+}
+
+bool RotaryEncoder::isButtonPressed() {
+  if (swPin == -1) return false;
+
+  bool current = (digitalRead(swPin) == LOW);
+  if (current && !lastSw) {
+    delay(10);  // Simple debounce
+    if (digitalRead(swPin) == LOW) {
+      swPressed = true;
+    }
+  } else {
+    swPressed = false;
+  }
+  lastSw = current;
+  return swPressed;
+}
+
+
+===== TFTHandler.cpp =====
+#include "TFTHandler.h"
+
+TFTHandler::TFTHandler() : tft() {}
+
+void TFTHandler::begin() {
+  tft.init();
+  tft.setRotation(3);        // Your working rotation
+  clearScreen();
+}
+
+void TFTHandler::clearScreen(uint16_t color) {
+  tft.fillScreen(color);
+}
+
+void TFTHandler::drawCenteredText(const char* text, int y, uint16_t color, int textSize) {
+  tft.setTextColor(color);
+  tft.setTextSize(textSize);
+  int16_t x = (tft.width() - tft.textWidth(text)) / 2;
+  tft.setCursor(x, y);
+  tft.println(text);
+}
+
+
+===== ToggleSwitch.cpp =====
+#include "ToggleSwitch.h"
+#include <Arduino.h>
+
+ToggleSwitch::ToggleSwitch(int pin) : pin(pin) {
+  pinMode(pin, INPUT_PULLUP);
+}
+
+bool ToggleSwitch::isOn() {
+  bool current = (digitalRead(pin) == LOW);
+  if (current != lastState) {
+    delay(50);  // Debounce
+    current = (digitalRead(pin) == LOW);
+    lastState = current;
+  }
+  return current;
+}
+
+

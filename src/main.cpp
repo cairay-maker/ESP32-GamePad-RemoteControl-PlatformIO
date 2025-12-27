@@ -21,7 +21,8 @@ bool Switch1On = false;   // Current state of Switch1
 bool Switch2On = false;   // Current state of Switch2
 
 // Modes
-GamePadMode gamePadMode(tft);
+GamePadMode gamePadMode(tft, hw);           // Switch1 On + Switch2 On
+GamePadMode gamePadMode2(tft, hw);          // Switch1 On + Switch2 Off (placeholder)
 RemoteControlMode remoteControlMode(tft, hw);
 RemoteGraphicMode remoteGraphicMode(tft, hw);
 
@@ -48,31 +49,27 @@ void setup() {
 }
 
 void loop() {
-  // === Update global switch states every loop ===
   Switch1On = Switch1.isOn();
   Switch2On = Switch2.isOn();
 
-  // === Mode switching ===
-  if (Switch1On && currentMode != &gamePadMode) {
-    if (currentMode) currentMode->exit();
-    currentMode = &gamePadMode;
-    currentMode->enter();
-  }
-  else if (!Switch1On) {
-    // When Switch1 is OFF we can choose between RemoteControl text mode
-    // and the new graphical joystick mode using Switch2.
-    if (Switch2On && currentMode != &remoteGraphicMode) {
-      if (currentMode) currentMode->exit();
-      currentMode = &remoteGraphicMode;
-      currentMode->enter();
-    } else if (!Switch2On && currentMode != &remoteControlMode) {
-      if (currentMode) currentMode->exit();
-      currentMode = &remoteControlMode;
-      currentMode->enter();
-    }
+  Mode* newMode = nullptr;
+
+  if (!Switch1On && !Switch2On) {
+    newMode = &remoteControlMode;
+  } else if (!Switch1On && Switch2On) {
+    newMode = &remoteGraphicMode;
+  } else if (Switch1On && !Switch2On) {
+    newMode = &gamePadMode2;  // "Game Pad Mode 2"
+  } else if (Switch1On && Switch2On) {
+    newMode = &gamePadMode;   // Full game menu
   }
 
-  // Run current mode update
+  if (newMode != currentMode) {
+    if (currentMode) currentMode->exit();
+    currentMode = newMode;
+    currentMode->enter();
+  }
+
   if (currentMode) {
     currentMode->update();
   }

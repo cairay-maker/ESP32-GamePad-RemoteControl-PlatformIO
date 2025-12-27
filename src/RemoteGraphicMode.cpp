@@ -18,7 +18,7 @@ RemoteGraphicMode::RemoteGraphicMode(TFTHandler& tftRef, Hardware& hw)
 
 void RemoteGraphicMode::enter() {
   tft.clearScreen();
-  tft.drawCenteredText("Remote Graphic", 8, TFT_CYAN, 1);
+  tft.drawCenteredText("Remote Control Graphic", 8, TFT_CYAN, 1);
   // Draw static circles for left and right joysticks at fixed coordinates
   TFT_eSPI& disp = tft.getTFT();
   const int left_cx = 23;

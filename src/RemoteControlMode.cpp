@@ -15,7 +15,7 @@ RemoteControlMode::RemoteControlMode(TFTHandler& tftRef, Hardware& hw)
 
 void RemoteControlMode::enter() {
   tft.clearScreen();
-  tft.drawCenteredText("Remote Control", 8, TFT_CYAN, 1);
+  tft.drawCenteredText("Remote Control Data", 8, TFT_CYAN, 1);
 
   delay(500);  // Extra safety
 
