@@ -6,6 +6,8 @@
 #include "PongGame.h"
 #include "RacingGame.h"
 #include "SpaceShooterGame.h"
+#include "StarshipGame.h"
+#include "BalanceGame.h"
 
 class GamePadMode : public Mode {
 public:
@@ -22,14 +24,16 @@ private:
   PongGame pongGame;
   RacingGame racingGame;
   SpaceShooterGame spaceShooterGame;
+  StarshipGame starshipGame;
+  BalanceGame balanceGame;
 
   // Menu state
-  enum GameState { MENU, PONG, FLAPPY, SHOOTER };
+  enum GameState { MENU, BALANCE, SHOOTER, STARSHIP, RACING, PONG };
   GameState currentGame = MENU;
 
   int selectedGame = 0;
-  const int numGames = 3;
-  const char* gameNames[3] = {"PONG", "RACING", "SPACE SHOOTER"};
+  const int numGames = 5;
+  const char* gameNames[5] = {"BALANCE SIMULATOR", "SPACE SHOOTER", "STARSHIP RUN", "RACING", "PONG"};
 
   void drawMenu();
   void startGame(int index);

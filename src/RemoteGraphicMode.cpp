@@ -227,7 +227,7 @@ void RemoteGraphicMode::update() {
   const int fixed_r = 10;
 
   // Read IMU and map to constrained values
-  imu.read();
+  imu.update();
   float ax = imu.ax; // positive -> roll left per request
   float ay = imu.ay; // positive -> roll up per request
   // constrain to requested ranges

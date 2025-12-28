@@ -78,7 +78,7 @@ void RemoteControlMode::update() {
   }
   static unsigned long lastIMURead = 0;
   if (millis() - lastIMURead >= 100 && imuReady) {
-    imu.read();
+    imu.update();
     lastIMURead = millis();
   }
 

@@ -2,6 +2,7 @@
 #include "TFTHandler.h"
 #include "ToggleSwitch.h"
 #include "GamePadMode.h"
+#include "IMUControlMode.h"
 #include "RemoteControlMode.h"
 #include "RemoteGraphicMode.h"
 
@@ -22,7 +23,7 @@ bool Switch2On = false;   // Current state of Switch2
 
 // Modes
 GamePadMode gamePadMode(tft, hw);           // Switch1 On + Switch2 On
-GamePadMode gamePadMode2(tft, hw);          // Switch1 On + Switch2 Off (placeholder)
+IMUControlMode imuControlMode(tft, hw);     // Switch1 On + Switch2 Off (placeholder)
 RemoteControlMode remoteControlMode(tft, hw);
 RemoteGraphicMode remoteGraphicMode(tft, hw);
 
@@ -59,7 +60,7 @@ void loop() {
   } else if (!Switch1On && Switch2On) {
     newMode = &remoteGraphicMode;
   } else if (Switch1On && !Switch2On) {
-    newMode = &gamePadMode2;  // "Game Pad Mode 2"
+    newMode = &imuControlMode; // "IMU Control Mode" 
   } else if (Switch1On && Switch2On) {
     newMode = &gamePadMode;   // Full game menu
   }

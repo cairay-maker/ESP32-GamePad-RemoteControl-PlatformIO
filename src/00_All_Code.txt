@@ -1345,3 +1345,2708 @@ bool ToggleSwitch::isOn() {
 }
 
 
+===== AnalogKeyboard.h =====
+#ifndef ANALOGKEYBOARD_H
+#define ANALOGKEYBOARD_H
+
+#include <Arduino.h>
+
+class AnalogKeyboard {
+public:
+  explicit AnalogKeyboard(int pin);
+  String getCurrentKey();      // ← Returns current key or "NONE"
+  String getPressedKey();      // ← Returns key only on new press
+
+private:
+  int pin;
+  String lastKey = "NONE";     // For edge detection
+};
+
+#endif
+
+
+===== BalanceGame.h =====
+#ifndef BALANCE_GAME_H
+#define BALANCE_GAME_H
+
+#include "Mode.h"
+#include "Hardware.h"
+#include <TFT_eSPI.h>
+#include <utility> 
+
+class BalanceGame : public Mode {
+public:
+    BalanceGame(TFTHandler& tftRef, Hardware& hwRef);
+    
+    void init();           
+    void update() override;
+    void draw();            
+    void enter() override;
+    void exit() override;
+    
+    void cleanup();
+    bool isRunning() { return true; }
+
+private:
+    Hardware& hw;
+    TFT_eSprite sprite;
+
+    // Simulation Variables - Beam 1
+    float ballX, ballVelocity, beamAngle;      
+
+    // Simulation Variables - Beam 2
+    float ballX2, ballVelocity2, beamAngle2;
+
+    bool isReleased; 
+
+    // PID Constants (Gold Standard)
+    const float Kp = 0.85f;
+    const float Ki = 0.02f;
+    const float Kd = 0.45f;
+
+    float dynamicKp, dynamicKi, dynamicKd;
+    
+    // PID State - Beam 1 (Uses Raw Kp, Ki, Kd)
+    float errorPrior;
+    float integral;
+
+    // PID State - Beam 2 (Uses Dynamic Gains)
+    float errorPrior2;
+    float integral2;
+
+    std::pair<int, int> project(float x, float y, float z);
+    void resetSim();
+};
+
+#endif
+
+
+===== GamePadMode.h =====
+#ifndef GAMEPADMODE_H
+#define GAMEPADMODE_H
+
+#include "Mode.h"
+#include "Hardware.h"
+#include "PongGame.h"
+#include "RacingGame.h"
+#include "SpaceShooterGame.h"
+#include "StarshipGame.h"
+#include "BalanceGame.h"
+
+class GamePadMode : public Mode {
+public:
+  explicit GamePadMode(TFTHandler& tft, Hardware& hw);
+
+  void enter() override;
+  void update() override;
+  void exit() override;
+
+private:
+  Hardware& hw;
+
+  // Game instances
+  PongGame pongGame;
+  RacingGame racingGame;
+  SpaceShooterGame spaceShooterGame;
+  StarshipGame starshipGame;
+  BalanceGame balanceGame;
+
+  // Menu state
+  enum GameState { MENU, BALANCE, SHOOTER, STARSHIP, RACING, PONG };
+  GameState currentGame = MENU;
+
+  int selectedGame = 0;
+  const int numGames = 5;
+  const char* gameNames[5] = {"BALANCE SIMULATOR", "SPACE SHOOTER", "STARSHIP RUN", "RACING", "PONG"};
+
+  void drawMenu();
+  void startGame(int index);
+};
+
+#endif
+
+
+===== Hardware.h =====
+#ifndef HARDWARE_H
+#define HARDWARE_H
+
+#include "Joystick.h"
+#include "AnalogKeyboard.h"
+#include "RotaryEncoder.h"
+#include "Potentiometer.h"
+#include "IMUReader.h"
+
+struct Hardware {
+  Joystick joyRight{36, 39, 1920, 1925, 100};
+  Joystick joyLeft{13, 12, 1910, 1995, 100};
+  AnalogKeyboard keyboard{34};
+  RotaryEncoder encoderRight{33, 32, 35};
+  RotaryEncoder encoderLeft{27, 26, 25};
+  RotaryEncoder encoderMiddle{31, 30, 29};
+  Potentiometer potLeft{15};
+  Potentiometer potMid{4};
+  Potentiometer potRight{14};
+  IMUReader imu;
+
+  Hardware() {}
+};
+
+#endif
+
+
+
+===== IMUControlMode.h =====
+#ifndef IMUCONTROLMODE_H
+#define IMUCONTROLMODE_H
+
+#include "Mode.h"
+#include "Hardware.h"
+
+class IMUControlMode : public Mode {
+public:
+    explicit IMUControlMode(TFTHandler& tft, Hardware& hw);
+
+    void enter() override;
+    void update() override; // One function to rule them all
+    void exit() override;
+
+private:
+    Hardware& hw;
+    TFT_eSprite sprite;
+};
+
+#endif
+
+
+===== IMUReader.h =====
+#ifndef IMUREADER_H
+#define IMUREADER_H
+
+#include <Adafruit_LSM6DS33.h>
+
+class IMUReader {
+public:
+    bool begin();
+    void update();
+    void calibrate();
+
+    // Raw Data
+    float ax, ay, az, gx, gy, gz;
+
+    // Filtered Output (Calibrated)
+    float getPitch() const { return pitch - pitchOffset; }
+    float getRoll() const  { return roll - rollOffset; }
+    float getYawRate() const { return filteredYawRate; } // Returns the smooth, zeroed value
+
+    // Raw comparison helpers
+    float getRawPitch() const { return (atan2(-ay, -az) * 57.2958f) - pitchOffset; }
+    float getRawRoll() const  { return (atan2(-ax, -az) * 57.2958f) - rollOffset; }
+
+private:
+    Adafruit_LSM6DS33 lsm6ds;
+    float pitch = 0, roll = 0;
+    float filteredYawRate = 0; // Smoothing variable for Yaw
+    unsigned long lastMicros;
+    
+    const float alpha = 0.96f;      // Filter for Pitch/Roll
+    const float yawAlpha = 0.15f;   // Smoothing for Yaw Rate (Low Pass)
+
+    // Calibration Offsets
+    float pitchOffset = 0;
+    float rollOffset = 0;
+    float gxBias = 0, gyBias = 0, gzBias = 0;
+};
+
+#endif
+
+
+===== Joystick.h =====
+#ifndef JOYSTICK_H
+#define JOYSTICK_H
+
+#include <Arduino.h>
+
+class Joystick {
+public:
+  // Constructor with optional custom center (default 2048)
+  Joystick(int pinX, int pinY, int centerX = 2048, int centerY = 2048, int deadzone = 100);
+
+  void update();                    // Read and process both axes
+
+  // 1. Raw values (direct from ADC)
+  int getRawX() const { return rawX; }
+  int getRawY() const { return rawY; }
+
+  // 2. Deadzoned values (centered, deadzone applied)
+  int getDeadzonedX() const { return deadzonedX; }
+  int getDeadzonedY() const { return deadzonedY; }
+
+  // 3. Mapped values (-1.0 to 1.0 float)
+  float getMappedX() const { return mappedX; }
+  float getMappedY() const { return mappedY; }
+
+private:
+  int pinX, pinY;
+  int centerX, centerY;
+  int deadzone;
+
+  int rawX = 0, rawY = 0;
+  int deadzonedX = 0, deadzonedY = 0;
+  float mappedX = 0.0f, mappedY = 0.0f;
+
+  static constexpr int ADC_MAX = 4095;
+};
+
+#endif
+
+
+===== Mode.h =====
+#ifndef MODE_H
+#define MODE_H
+
+#include "TFTHandler.h"
+
+class Mode {
+public:
+  explicit Mode(TFTHandler& tft) : tft(tft) {}
+  virtual ~Mode() = default;
+
+  virtual void enter() = 0;
+  virtual void update() = 0;     // Called every loop
+  virtual void exit() {}
+
+protected:
+  TFTHandler& tft;
+};
+
+#endif
+
+
+===== PongGame.h =====
+#ifndef PONGGAME_H
+#define PONGGAME_H
+
+#include "TFTHandler.h"
+#include "Hardware.h"
+#include <TFT_eSPI.h>  // For TFT_eSprite
+
+class PongGame {
+public:
+  PongGame(TFTHandler& tft, Hardware& hw);
+  void init();
+  void update();
+  void draw();
+  void cleanup(); // <--- Add this line
+  bool isRunning() const { return running; }
+
+private:
+  TFTHandler& tft;
+  Hardware& hw;
+
+  bool running = true;
+
+  // Pong constants
+  #define PADDLE_WIDTH 4
+  #define PADDLE_HEIGHT 24
+  #define BALL_RADIUS 3
+  #define PADDLE_MARGIN 5
+  #define WINNING_SCORE 3
+
+  float ballX, ballY, ballVelX, ballVelY;
+  int paddle1Y, paddle2Y;
+  int score1 = 0, score2 = 0;
+  float serveVX = 3.0f, serveVY = 2.0f;
+
+  // Speed ramp and timing
+  unsigned long gameStartTime = 0;
+  unsigned long lastSpeedRamp = 0;
+  float speedMultiplier = 1.0f;
+
+  // Turn-based serve
+  int nextServePlayer = 1;  // 1 = left player, 2 = right player
+
+  // Sprite for flicker-free drawing
+  TFT_eSprite sprite;
+
+  void resetBall();
+  void drawGameOver();
+};
+
+#endif
+
+
+===== Potentiometer.h =====
+#ifndef POTENTIOMETER_H
+#define POTENTIOMETER_H
+
+#include <Arduino.h>
+
+class Potentiometer {
+public:
+  explicit Potentiometer(int pin);
+
+  void update();                                   // Read and process
+
+  int getRaw() const;                              // Raw ADC value (0-4095)
+
+  float getNormalized(bool applyDeadzone = true);  // -1.0 to 1.0 (with optional deadzone)
+  float getNormalizedRaw();                        // -1.0 to 1.0 full precision (no deadzone)
+
+  // Calibration
+  void beginCalibration(unsigned long durationMs = 5000);
+  bool updateCalibration();                        // Call during calibration
+  void endCalibration();
+  void printCalibration() const;
+  void setMinMaxCenter(int minV, int maxV, int centerV);
+
+  void setDeadzone(int dz) { deadzone = dz; }      // Change deadzone (default 100)
+
+private:
+  int pin;
+  int rawValue = 0;
+
+  int minVal = 0;
+  int maxVal = 4095;
+  int centerVal = 2048;
+  int deadzone = 100;  // Default ±100
+
+  bool calibrating = false;
+  unsigned long calibStart = 0;
+  unsigned long calibDuration = 5000;
+
+  float mapFloat(int val, int inMin, int inMax, float outMin, float outMax) const;
+};
+
+#endif
+
+
+===== RacingGame.h =====
+#ifndef RACINGGAME_H
+#define RACINGGAME_H
+
+#include "TFTHandler.h"
+#include "Hardware.h"
+#include <TFT_eSPI.h>
+
+class RacingGame {
+public:
+  RacingGame(TFTHandler& tft, Hardware& hw);
+  void init();
+  void update();
+  void draw();
+  void cleanup();
+  bool isRunning() const { return running; }
+
+private:
+  TFTHandler& tft;
+  Hardware& hw;
+  TFT_eSprite sprite;
+
+  bool running = true;
+  float playerX = 0;
+  float baseSpeed = 1.0f;
+  float currentSpeed = 1.0f;
+  float trackPos = 0;
+  
+  // Strike Logic
+  int strikes = 0;
+  const int MAX_STRIKES = 5; 
+  int score = 0;
+  bool isOffRoad = false;
+  
+  // Effects Logic
+  int explosionTimer = 0;
+  float explosionX = 0;
+  unsigned long lastStrikeTime = 0;
+  unsigned long lastSpeedBoostTime = 0;
+
+  struct Obstacle {
+    float x;
+    float z;
+    int animalType; // 0=Cow, 1=Horse, 2=Sheep
+    bool active;
+    bool passed;
+  };
+
+  #define MAX_OBSTACLES 3
+  Obstacle obstacles[MAX_OBSTACLES];
+
+  void spawnObstacle();
+  void drawCar(int x, int y);
+  void drawAnimal(float x, float y, int type, float scale);
+  void endGame();
+};
+
+#endif
+
+
+===== RemoteControlMode.h =====
+#ifndef REMOTECONTROLMODE_H
+#define REMOTECONTROLMODE_H
+
+#include "Mode.h"
+#include "Hardware.h"
+
+class RemoteControlMode : public Mode {
+public:
+  // Constructor takes TFT reference and shared hardware
+  explicit RemoteControlMode(TFTHandler& tft, Hardware& hw);
+
+  void enter() override;
+  void update() override;
+  void exit() override;
+
+private:
+  // === References to shared input hardware ===
+  Joystick& joyRight;
+  // pinX=36 (logical X), pinY=39 (logical Y)
+  // centerX=1920, centerY=1925
+  // deadzone=100
+
+  // Left Joystick - swapped pins + calibrated center
+  Joystick& joyLeft;
+  // pinX=13 (logical X), pinY=12 (logical Y)
+  // centerX=1910, centerY=1995
+  // deadzone=100
+
+  // No inversion needed (remove any true/true if you added them)
+  // Just swap the order: Joystick(pinForLogicalX, pinForLogicalY)
+
+  AnalogKeyboard& keyboard;        // 5-button analog keyboard on GPIO34
+
+  RotaryEncoder& encoderRight;   // CLK, DT, SW
+  RotaryEncoder& encoderLeft;    // CLK, DT, SW (SW noted not working)
+
+  Potentiometer& potRight;         // Right pot
+  Potentiometer& potMid;            // Middle pot
+  Potentiometer& potLeft;          // Left pot
+
+  IMUReader& imu;                      // LSM6DS33 on SDA=21, SCL=22
+};
+
+#endif
+
+
+===== RemoteGraphicMode.h =====
+#ifndef REMOTEGRAPHICMODE_H
+#define REMOTEGRAPHICMODE_H
+
+#include "Mode.h"
+#include "Hardware.h"
+
+class RemoteGraphicMode : public Mode {
+public:
+  explicit RemoteGraphicMode(TFTHandler& tft, Hardware& hw);
+  void enter() override;
+  void update() override;
+  void exit() override;
+
+private:
+  // References to shared hardware (owned by main.cpp Hardware instance)
+  Joystick& joyRight;
+  Joystick& joyLeft;
+  AnalogKeyboard& keyboard;
+  RotaryEncoder& encoderRight;
+  RotaryEncoder& encoderLeft;
+  RotaryEncoder& encoderMiddle;
+  Potentiometer& potLeft;
+  Potentiometer& potMid;
+  Potentiometer& potRight;
+  IMUReader& imu;
+};
+
+#endif
+
+
+
+===== RotaryEncoder.h =====
+#ifndef ROTARYENCODER_H
+#define ROTARYENCODER_H
+
+#include <Arduino.h>
+
+class RotaryEncoder {
+public:
+  RotaryEncoder(int clkPin, int dtPin, int swPin = -1);  // swPin optional
+  long getCounter();             // Current position
+  bool isButtonPressed();        // True on new press (edge)
+
+private:
+  int clkPin, dtPin, swPin;
+  long counter = 0;
+  int lastState = 0;
+  bool lastSw = HIGH;
+  bool swPressed = false;
+
+  // State table for reliable decode (ignores invalid transitions)
+  static const int8_t table[16];
+};
+
+#endif
+
+
+===== SpaceShooterGame.h =====
+#ifndef SPACESHOOTERGAME_H
+#define SPACESHOOTERGAME_H
+
+#include "TFTHandler.h"
+#include "Hardware.h"
+#include <TFT_eSPI.h>
+
+class SpaceShooterGame {
+public:
+  SpaceShooterGame(TFTHandler& tft, Hardware& hw);
+  void init();
+  void update();
+  void draw();
+  void cleanup();
+  bool isRunning() const { return running; }
+
+private:
+  TFTHandler& tft;
+  Hardware& hw;
+  TFT_eSprite sprite;
+
+  bool running = true;
+  #define PLAYER_WIDTH 12
+  #define PLAYER_HEIGHT 12
+  #define MAX_ENEMIES 6
+  #define MAX_BULLETS 10
+
+  float playerX;
+  const int playerY = 110;
+  int score = 0;
+
+  struct Bullet { float x, y; bool active; };
+  Bullet bullets[MAX_BULLETS];
+
+  struct Enemy {
+    float x, y, speed;
+    int type, size;
+    uint16_t color;
+    bool active;
+  };
+  Enemy enemies[MAX_ENEMIES];
+
+  unsigned long lastShot = 0;
+  unsigned long lastEnemySpawn = 0;
+
+  void spawnEnemy();
+  void drawPlayer(int x, int y);
+  void drawEnemy(Enemy& e);
+  void endGame();
+};
+
+#endif
+
+
+===== StarshipGame.h =====
+#ifndef STARSHIP_GAME_H
+#define STARSHIP_GAME_H
+
+#include "Mode.h"
+#include "Hardware.h"
+#include <TFT_eSPI.h>
+
+class StarshipGame : public Mode {
+public:
+    StarshipGame(TFTHandler& tftRef, Hardware& hwRef);
+    void init();
+    void cleanup();
+    
+    // Add these for GamePadMode compatibility
+    void draw() {}             // Does nothing because update() handles it
+    bool isRunning() { return true; } // Always returns true for now
+
+    void enter() override;
+    void update() override;
+    void exit() override;
+
+private:
+    Hardware& hw;
+    TFT_eSprite sprite;
+    
+    enum GameState { WAITING, PLAYING, GAMEOVER };
+    GameState state;
+
+    float pitchOffset = 0, rollOffset = 0;
+    float obstacleZ = 100.0f;
+    float obsX = 0, obsY = 0;
+    int score = 0;
+
+    void resetObstacle();
+    std::pair<int, int> project(float x, float y, float z);
+};
+
+#endif
+
+
+===== TFTHandler.h =====
+#ifndef TFTHANDLER_H
+#define TFTHANDLER_H
+
+#include <TFT_eSPI.h>
+
+class TFTHandler {
+public:
+  TFTHandler();
+  void begin();
+  void clearScreen(uint16_t color = TFT_BLACK);
+  void drawCenteredText(const char* text, int y = 60, uint16_t color = TFT_WHITE, int textSize = 2);
+
+  // Add this: direct access to the TFT instance for advanced use
+  TFT_eSPI& getTFT() { return tft; }
+
+private:
+  TFT_eSPI tft;
+};
+
+#endif
+
+
+===== ToggleSwitch.h =====
+#ifndef TOGGLESWITCH_H
+#define TOGGLESWITCH_H
+
+class ToggleSwitch {
+public:
+  explicit ToggleSwitch(int pin);
+  bool isOn();                   // Returns true when switch is ON (LOW with pull-up)
+
+private:
+  int pin;
+  bool lastState = false;
+};
+
+#endif
+
+
+===== AnalogKeyboard.cpp =====
+#include "AnalogKeyboard.h"
+
+AnalogKeyboard::AnalogKeyboard(int pin) : pin(pin) {}
+
+String AnalogKeyboard::getCurrentKey() {
+  int val = analogRead(pin);
+
+  if (val > 4000) return "LEFT";
+  if (val > 3200 && val < 3700) return "UP";
+  if (val > 2500 && val < 2900) return "DOWN";
+  if (val > 1800 && val < 2150) return "RIGHT";
+  if (val > 600 && val < 1000) return "SELECT";
+
+  return "NONE";
+}
+
+String AnalogKeyboard::getPressedKey() {
+  String current = getCurrentKey();
+  String pressed = "NONE";
+
+  if (current != "NONE" && current != lastKey) {
+    pressed = current;
+  }
+
+  lastKey = current;
+  return pressed;
+}
+
+
+===== BalanceGame.cpp =====
+#include "BalanceGame.h"
+#include <Arduino.h>
+
+static const int FRAME_W = 140;
+static const int FRAME_H = 120;
+static const int CENTER_X = 70;
+static const int CENTER_Y = 60; 
+
+BalanceGame::BalanceGame(TFTHandler& tftRef, Hardware& hwRef)
+    : Mode(tftRef), hw(hwRef), sprite(&tftRef.getTFT()) {}
+
+void BalanceGame::init() {
+    if (!sprite.created()) sprite.createSprite(FRAME_W, FRAME_H);
+    resetSim();
+}
+
+void BalanceGame::resetSim() {
+    ballX = 0; ballVelocity = 0; beamAngle = 0;
+    ballX2 = 0; ballVelocity2 = 0; beamAngle2 = 0;
+    integral = 0; errorPrior = 0;
+    integral2 = 0; errorPrior2 = 0;
+    isReleased = false;
+}
+
+std::pair<int, int> BalanceGame::project(float x, float y, float z) {
+    float focalLength = 100.0f;
+    int screenX = (int)((x * focalLength) / (z + 100.0f)) + CENTER_X;
+    int screenY = (int)((y * focalLength) / (z + 100.0f)) + CENTER_Y;
+    return {screenX, screenY};
+}
+
+void BalanceGame::enter() {
+    tft.clearScreen();
+    init();
+}
+
+void BalanceGame::update() {
+    hw.joyRight.update(); 
+    
+    // Calculate Adjusted Gains for Beam 2
+    float multP = 1.0f + hw.potLeft.getNormalized(); 
+    float multI = 1.0f + hw.potMid.getNormalized(); 
+    float multD = 1.0f + hw.potRight.getNormalized(); 
+
+    dynamicKp = Kp * multP;
+    dynamicKi = Ki * multI;
+    dynamicKd = Kd * multD;
+
+    float joyX = hw.joyRight.getMappedX(); 
+    if (abs(joyX) > 0.05f) {
+        isReleased = false; 
+        ballX += (joyX * 3.0f); 
+        ballX2 = ballX;      
+        ballVelocity = 0; 
+        ballVelocity2 = 0;
+        integral = 0; integral2 = 0;     
+    } else {
+        isReleased = true;
+    }
+
+    ballX = constrain(ballX, -55.0f, 55.0f);
+    ballX2 = constrain(ballX2, -55.0f, 55.0f);
+
+    if (isReleased) {
+        // --- BEAM 1 (Fixed PID - RAW) ---
+        float error1 = 0 - ballX; 
+        integral = constrain(integral + error1, -50, 50);
+        float deriv1 = error1 - errorPrior;
+        // USES Kp, Ki, Kd
+        beamAngle = (Kp * error1) + (Ki * integral) + (Kd * deriv1);
+        beamAngle = constrain(beamAngle, -25.0f, 25.0f);
+        errorPrior = error1;
+
+        // --- BEAM 2 (Tuned PID - ADJUSTED) ---
+        float error2 = 0 - ballX2; 
+        integral2 = constrain(integral2 + error2, -50, 50);
+        float deriv2 = error2 - errorPrior2;
+        // USES dynamicKp, dynamicKi, dynamicKd
+        beamAngle2 = (dynamicKp * error2) + (dynamicKi * integral2) + (dynamicKd * deriv2);
+        beamAngle2 = constrain(beamAngle2, -25.0f, 25.0f);
+        errorPrior2 = error2;
+
+        // --- Physics ---
+        float rad1 = beamAngle * (M_PI / 180.0f);
+        ballVelocity += sin(rad1) * 0.35f;
+        ballVelocity *= 0.98f; 
+        ballX += ballVelocity;
+
+        float rad2 = beamAngle2 * (M_PI / 180.0f);
+        ballVelocity2 += sin(rad2) * 0.35f;
+        ballVelocity2 *= 0.98f; 
+        ballX2 += ballVelocity2;
+    } else {
+        beamAngle = 0; beamAngle2 = 0;
+        errorPrior = 0; errorPrior2 = 0;
+    }
+}
+
+void BalanceGame::draw() {
+    sprite.fillSprite(TFT_BLACK);
+
+    float beamHalfLength = 55.0f;
+
+    // Draw Beam 1 (Cyan - Raw)
+    float rad1 = beamAngle * (PI / 180.0f);
+    auto pStart1 = project(-cos(rad1)*beamHalfLength, -sin(rad1)*beamHalfLength, 0);
+    auto pEnd1   = project(cos(rad1)*beamHalfLength, sin(rad1)*beamHalfLength, 0);
+    sprite.drawLine(pStart1.first, pStart1.second, pEnd1.first, pEnd1.second, TFT_WHITE);
+    auto pBall1 = project(cos(rad1)*ballX, (sin(rad1)*ballX)-6, 0);
+    sprite.fillCircle(pBall1.first, pBall1.second, 4, TFT_CYAN);
+
+    // Draw Beam 2 (Green - Adjusted)
+    float rad2 = beamAngle2 * (PI / 180.0f);
+    int yOff2 = 30; 
+    auto pStart2 = project(-cos(rad2)*beamHalfLength, -sin(rad2)*beamHalfLength, 0);
+    auto pEnd2   = project(cos(rad2)*beamHalfLength, sin(rad2)*beamHalfLength, 0);
+    sprite.drawLine(pStart2.first, pStart2.second + yOff2, pEnd2.first, pEnd2.second + yOff2, TFT_WHITE);
+    auto pBall2 = project(cos(rad2)*ballX2, (sin(rad2)*ballX2)-6, 0);
+    sprite.fillCircle(pBall2.first, pBall2.second + yOff2, 4, TFT_GREEN);
+
+    // --- HUD ---
+    sprite.setTextSize(1);
+    sprite.setTextColor(TFT_CYAN);
+    sprite.setCursor(2, 2);
+    sprite.printf("RawP:%4.2f I:%4.2f D:%4.2f", Kp, Ki, Kd); // Top Label
+
+    sprite.setCursor(2, 12);
+    sprite.setTextColor(TFT_GREEN);
+    sprite.printf("AdjP:%4.2f I:%4.2f D:%4.2f", dynamicKp, dynamicKi, dynamicKd); // Bottom Label
+
+    sprite.setCursor(2, 22);
+    sprite.setTextColor(TFT_ORANGE);
+    sprite.printf("Ang: %+4.1f vs %+4.1f", beamAngle, beamAngle2);
+
+    sprite.setTextColor(TFT_RED);
+    sprite.setTextDatum(BC_DATUM); 
+    sprite.drawString("R.Joy + Pots to Adj", FRAME_W / 2, FRAME_H - 2 );
+    
+    sprite.pushSprite(10, 10);
+}
+
+void BalanceGame::exit() { cleanup(); }
+void BalanceGame::cleanup() { if (sprite.created()) sprite.deleteSprite(); }
+
+
+===== GamePadMode.cpp =====
+#include "GamePadMode.h"
+#include <Arduino.h>
+
+GamePadMode::GamePadMode(TFTHandler& tftRef, Hardware& hwRef)
+    : Mode(tftRef),
+      hw(hwRef),
+      pongGame(tftRef, hwRef),
+      racingGame(tftRef, hwRef),
+      spaceShooterGame(tftRef, hwRef),
+      starshipGame(tftRef, hwRef),
+      balanceGame(tftRef, hwRef)
+{
+}
+
+void GamePadMode::enter() {
+  currentGame = MENU;
+  selectedGame = 0;
+  drawMenu(); 
+}
+
+void GamePadMode::drawMenu() {
+  tft.clearScreen();
+  tft.drawCenteredText("Game Pad Mode", 8, TFT_CYAN, 1);
+
+  for (int i = 0; i < numGames; i++) {
+    int y = 25 + i * 15;
+    if (i == selectedGame) {
+      tft.getTFT().setTextColor(TFT_YELLOW);
+      tft.getTFT().setCursor(20, y);
+      tft.getTFT().print("> ");
+    } else {
+      tft.getTFT().setTextColor(TFT_WHITE);
+      tft.getTFT().setCursor(25, y);
+    }
+    tft.getTFT().println(gameNames[i]);
+  }
+
+  tft.drawCenteredText("UP/DOWN: Select", 105, TFT_ORANGE, 1);
+  tft.drawCenteredText("SELECT: Play/Exit", 115, TFT_ORANGE, 1);
+}
+
+void GamePadMode::startGame(int index) {
+  // 1. Clear the WHOLE screen to remove menu text and orange instructions
+  tft.clearScreen();
+  
+  // 2. Clear RAM of any "ghost" sprites before starting
+  balanceGame.cleanup();
+  spaceShooterGame.cleanup();
+  starshipGame.cleanup();
+  racingGame.cleanup();
+  pongGame.cleanup();
+
+  // 3. Mapping based on your requested order: 
+  // 0:BALANCE, 1:SHOOTER, 2:STARSHIP, 3:RACING, 4:PONG
+  if (index == 0) {
+    currentGame = BALANCE;
+    balanceGame.init();
+  } else if (index == 1) {
+    currentGame = SHOOTER;
+    spaceShooterGame.init();
+  } else if (index == 2) {
+    currentGame = STARSHIP;
+    starshipGame.init();
+  } else if (index == 3) {
+    currentGame = RACING;
+    racingGame.init();
+  } else if (index == 4) {
+    currentGame = PONG;
+    pongGame.init();
+  }
+}
+
+void GamePadMode::update() {
+  // 1. Check physical hardware state
+  String pressed = hw.keyboard.getPressedKey();
+
+  // 2. Universal Back/Exit Logic (SELECT button)
+  if (pressed == "SELECT") {
+    if (currentGame != MENU) {
+      // Cleanup the active game's RAM based on current state
+      if (currentGame == BALANCE) balanceGame.cleanup();
+      else if (currentGame == SHOOTER) spaceShooterGame.cleanup();
+      else if (currentGame == STARSHIP) starshipGame.cleanup();
+      else if (currentGame == RACING) racingGame.cleanup();
+      else if (currentGame == PONG) pongGame.cleanup();
+
+      currentGame = MENU;
+      drawMenu();
+      return; 
+    } else {
+      // If in MENU, start the highlighted game
+      startGame(selectedGame);
+      return;
+    }
+  }
+
+  // 3. Menu Navigation
+  if (currentGame == MENU) {
+    if (pressed == "UP") {
+      selectedGame = (selectedGame - 1 + numGames) % numGames;
+      drawMenu();
+    } else if (pressed == "DOWN") {
+      selectedGame = (selectedGame + 1) % numGames;
+      drawMenu();
+    }
+    return; 
+  }
+
+  // 4. Game Run Loops (Mapped to GameState enum)
+  if (currentGame == BALANCE) {
+    balanceGame.update();
+    balanceGame.draw();
+    if (!balanceGame.isRunning()) { currentGame = MENU; drawMenu(); }
+  } 
+  else if (currentGame == SHOOTER) {
+    spaceShooterGame.update();
+    spaceShooterGame.draw();
+    if (!spaceShooterGame.isRunning()) { currentGame = MENU; drawMenu(); }
+  }
+  else if (currentGame == STARSHIP) {
+    starshipGame.update();
+    starshipGame.draw();
+    if (!starshipGame.isRunning()) { currentGame = MENU; drawMenu(); }
+  }
+  else if (currentGame == RACING) {
+    racingGame.update();
+    racingGame.draw();
+    if (!racingGame.isRunning()) { currentGame = MENU; drawMenu(); }
+  } 
+  else if (currentGame == PONG) {
+    pongGame.update();
+    pongGame.draw();
+    if (!pongGame.isRunning()) { currentGame = MENU; drawMenu(); }
+  }
+}
+
+void GamePadMode::exit() {
+  // Ensure all RAM is freed when leaving GamePadMode entirely
+  balanceGame.cleanup();
+  spaceShooterGame.cleanup();
+  starshipGame.cleanup();
+  racingGame.cleanup();
+  pongGame.cleanup();
+}
+
+
+===== IMUControlMode.cpp =====
+#include "IMUControlMode.h"
+#include <Arduino.h>
+
+static const int FRAME_W = 140;
+static const int FRAME_H = 80; 
+static const int FRAME_X = 10; 
+static const int FRAME_Y = 25;                 
+
+IMUControlMode::IMUControlMode(TFTHandler& tftRef, Hardware& hwRef)
+    : Mode(tftRef), hw(hwRef), sprite(&tftRef.getTFT()) {}
+
+void IMUControlMode::enter() {
+    tft.clearScreen();
+    tft.drawCenteredText("IMU 3D ISOMETRIC AXIS", 8, TFT_CYAN, 1);
+    tft.drawCenteredText("Press Select to Calibrate", 115, TFT_LIGHTGREY, 1);
+    tft.getTFT().drawRect(FRAME_X - 1, FRAME_Y - 1, FRAME_W + 2, FRAME_H + 2, 0x7BEF);
+
+    if (!sprite.created()) sprite.createSprite(FRAME_W, FRAME_H);
+}
+
+void IMUControlMode::update() {
+    if (hw.keyboard.getPressedKey() == "SELECT") hw.imu.calibrate();
+
+    hw.imu.update();
+    
+    float p = hw.imu.getPitch() * (PI / 180.0f);
+    float r = hw.imu.getRoll() * (PI / 180.0f);
+
+    sprite.fillSprite(TFT_BLACK);
+
+    int scx = FRAME_W / 2;
+    int scy = (FRAME_H / 2) + 10; 
+
+    // --- Projection Engine ---
+    auto project = [&](float x, float y, float z) {
+        float y1 = y * cos(p) - z * sin(p);
+        float z1 = y * sin(p) + z * cos(p);
+        float x2 = x * cos(r) + z1 * sin(r);
+        float z2 = -x * sin(r) + z1 * cos(r);
+
+        float isoX = x2 - (y1 * 0.707f); 
+        float isoY = -z2 + (y1 * 0.707f); 
+
+        float baseScale = 30.0f; 
+        return std::pair<int, int>((int)(isoX * baseScale) + scx, (int)(isoY * baseScale) + scy);
+    };
+
+    auto drawThickLine = [&](std::pair<int, int> p1, std::pair<int, int> p2, uint16_t color) {
+        sprite.drawLine(p1.first, p1.second, p2.first, p2.second, color);
+        sprite.drawLine(p1.first + 1, p1.second, p2.first + 1, p2.second, color);
+    };
+
+    auto origin = project(0, 0, 0);
+
+    // --- 1. DRAW MOVING ELLIPSE ---
+    // We treat the ellipse as a ring on the X-Y plane (Z=0)
+    // Width 80 (radius 40/baseScale = 1.33)
+    // Height 40 (radius 20/baseScale = 0.66)
+    float rx = 1.33f; 
+    float ry = 0.66f;
+    int segments = 16;
+    std::pair<int, int> prevPt;
+
+    for (int i = 0; i <= segments; i++) {
+        float angle = i * (2.0f * PI / segments);
+        auto currPt = project(cos(angle) * rx, sin(angle) * ry, 0);
+        
+        if (i > 0) {
+            sprite.drawLine(prevPt.first, prevPt.second, currPt.first, currPt.second, 0x7BEF); // Grey outline
+        }
+        prevPt = currPt;
+    }
+
+    // --- 2. DRAW AXES ---
+    auto xAxis = project(1.0f, 0, 0);
+    drawThickLine(origin, xAxis, TFT_RED);
+    
+    auto yAxis = project(0, 0.7f, 0); 
+    drawThickLine(origin, yAxis, TFT_GREEN);
+    
+    auto zAxis = project(0, 0, 1.0f);
+    drawThickLine(origin, zAxis, TFT_BLUE);
+
+    // --- 3. TEXT ---
+    sprite.setTextColor(TFT_WHITE);
+    sprite.setCursor(2, 2);
+    sprite.printf("P:%+05.1f R:%+05.1f Y:%+05.1f", hw.imu.getPitch(), hw.imu.getRoll(), hw.imu.getYawRate());
+
+    sprite.pushSprite(FRAME_X, FRAME_Y);
+}
+
+void IMUControlMode::exit() {
+    if (sprite.created()) sprite.deleteSprite();
+}
+
+
+===== IMUReader.cpp =====
+#include "IMUReader.h"
+#include <Wire.h>
+#include <Arduino.h>
+
+bool IMUReader::begin() {
+    Wire.begin(21, 22);
+    Wire.setClock(400000); 
+    if (!lsm6ds.begin_I2C(0x6B)) return false;
+
+    lsm6ds.setAccelRange(LSM6DS_ACCEL_RANGE_4_G);
+    lsm6ds.setGyroRange(LSM6DS_GYRO_RANGE_1000_DPS);
+    lsm6ds.setAccelDataRate(LSM6DS_RATE_208_HZ);
+    lsm6ds.setGyroDataRate(LSM6DS_RATE_208_HZ);
+
+    lastMicros = micros();
+    return true;
+}
+
+void IMUReader::calibrate() {
+    float pSum = 0, rSum = 0, gxb = 0, gyb = 0, gzb = 0;
+    const int samples = 100;
+
+    for (int i = 0; i < samples; i++) {
+        sensors_event_t a, g, t;
+        lsm6ds.getEvent(&a, &g, &t);
+        
+        pSum += atan2(-a.acceleration.y, -a.acceleration.z) * 57.2958f;
+        rSum += atan2(-a.acceleration.x, -a.acceleration.z) * 57.2958f;
+        gxb += g.gyro.x;
+        gyb += g.gyro.y;
+        gzb += g.gyro.z;
+        delay(2); 
+    }
+
+    pitchOffset = pSum / samples;
+    rollOffset = rSum / samples;
+    gxBias = gxb / samples;
+    gyBias = gyb / samples;
+    gzBias = gzb / samples;
+
+    // Reset filter states so they don't "drift" to the new zero
+    pitch = 0; 
+    roll = 0;
+    filteredYawRate = 0;
+}
+
+void IMUReader::update() {
+    sensors_event_t accel, gyro, temp;
+    lsm6ds.getEvent(&accel, &gyro, &temp);
+
+    ax = accel.acceleration.x; ay = accel.acceleration.y; az = accel.acceleration.z;
+    
+    // 1. Apply Gyro Bias Correction (The Calibration)
+    gx = gyro.gyro.x - gxBias;
+    gy = gyro.gyro.y - gyBias;
+    gz = gyro.gyro.z - gzBias;
+
+    unsigned long currentMicros = micros();
+    float dt = (currentMicros - lastMicros) / 1000000.0f;
+    lastMicros = currentMicros;
+
+    // 2. Converto to Degrees/sec
+    float gx_deg = -gx * 57.2958f; 
+    float gy_deg =  gy * 57.2958f;
+    float gz_deg =  gz * 57.2958f;
+
+    // 3. Accelerometer "Raw" Angles
+    float accPitch = atan2(-ay, -az) * 57.2958f;
+    float accRoll  = atan2(-ax, -az) * 57.2958f;
+
+    // 4. Complementary Filter (Pitch and Roll)
+    pitch = alpha * (pitch + gx_deg * dt) + (1.0f - alpha) * accPitch;
+    roll  = alpha * (roll + gy_deg * dt) + (1.0f - alpha) * accRoll;
+
+    // 5. Low Pass Filter (Yaw Rate Smoothing to stop flickering)
+    filteredYawRate = (filteredYawRate * (1.0f - yawAlpha)) + (gz_deg * yawAlpha);
+}
+
+
+===== Joystick.cpp =====
+#include "Joystick.h"
+
+Joystick::Joystick(int pinX, int pinY, int centerX, int centerY, int deadzone)
+    : pinX(pinX), pinY(pinY), centerX(centerX), centerY(centerY), deadzone(deadzone)
+{
+  // Initial read to avoid garbage
+  update();
+}
+
+void Joystick::update() {
+  rawX = analogRead(pinX);
+  rawY = analogRead(pinY);
+
+  // Apply deadzone
+  int offsetX = rawX - centerX;
+  int offsetY = rawY - centerY;
+
+  if (abs(offsetX) < deadzone) offsetX = 0;
+  if (abs(offsetY) < deadzone) offsetY = 0;
+
+  // Map using actual observed range (replace with your values!)
+  const int minX = 0;   // ← Your measured min X
+  const int maxX = 4095;  // ← Your measured max X
+  const int minY = 0;   // ← Your measured min Y
+  const int maxY = 4095;  // ← Your measured max Y
+
+  // Symmetric mapping to -1.0 to 1.0
+  if (offsetX == 0) {
+    mappedX = 0.0f;
+  } else if (offsetX > 0) {
+    mappedX = static_cast<float>(offsetX) / (maxX - centerX);
+  } else {
+    mappedX = static_cast<float>(offsetX) / (centerX - minX);
+  }
+
+  if (offsetY == 0) {
+    mappedY = 0.0f;
+  } else if (offsetY > 0) {
+    mappedY = static_cast<float>(offsetY) / (maxY - centerY);
+  } else {
+    mappedY = static_cast<float>(offsetY) / (centerY - minY);
+  }
+
+  // Clamp just in case
+  if (mappedX > 1.0f) mappedX = 1.0f;
+  if (mappedX < -1.0f) mappedX = -1.0f;
+  if (mappedY > 1.0f) mappedY = 1.0f;
+  if (mappedY < -1.0f) mappedY = -1.0f;
+}
+
+
+===== main.cpp =====
+#include <Arduino.h>
+#include "TFTHandler.h"
+#include "ToggleSwitch.h"
+#include "GamePadMode.h"
+#include "IMUControlMode.h"
+#include "RemoteControlMode.h"
+#include "RemoteGraphicMode.h"
+
+#define SWITCH_1_PIN 19  // Primary switch (e.g., master power / mode selector)
+#define SWITCH_2_PIN 25  // Secondary switch (for future sub-modes or options)
+
+// Global objects
+TFTHandler tft;
+ToggleSwitch Switch1(SWITCH_1_PIN);  // Switch1 - Main control
+ToggleSwitch Switch2(SWITCH_2_PIN);  // Switch2 - Secondary control
+
+// Shared hardware objects (joysticks, pots, encoders, IMU)
+Hardware hw;
+
+// === Global switch states – accessible from any mode ===
+bool Switch1On = false;   // Current state of Switch1
+bool Switch2On = false;   // Current state of Switch2
+
+// Modes
+GamePadMode gamePadMode(tft, hw);           // Switch1 On + Switch2 On
+IMUControlMode imuControlMode(tft, hw);     // Switch1 On + Switch2 Off (placeholder)
+RemoteControlMode remoteControlMode(tft, hw);
+RemoteGraphicMode remoteGraphicMode(tft, hw);
+
+// Current active mode
+Mode* currentMode = nullptr;
+
+void setup() {
+  Serial.begin(115200);
+  delay(2000);  // Critical boot delay for stability
+
+  Serial.println("\n=== ESP32 Dual Switch Controller ===");
+  Serial.println("Switch1 (Pin 19): Primary Mode");
+  Serial.println("Switch2 (Pin 25): Secondary / Future Options");
+  Serial.println("Current: Switch1 OFF → Remote Control Mode");
+  Serial.println("         Switch1 ON  → Game Pad Mode");
+  Serial.println("Started - Dec 25, 2025");
+
+  tft.begin();
+  delay(500);
+
+  // Default to Remote Control mode
+  currentMode = &remoteControlMode;
+  currentMode->enter();
+}
+
+void loop() {
+  Switch1On = Switch1.isOn();
+  Switch2On = Switch2.isOn();
+
+  Mode* newMode = nullptr;
+
+  if (!Switch1On && !Switch2On) {
+    newMode = &remoteControlMode;
+  } else if (!Switch1On && Switch2On) {
+    newMode = &remoteGraphicMode;
+  } else if (Switch1On && !Switch2On) {
+    newMode = &imuControlMode; // "IMU Control Mode" 
+  } else if (Switch1On && Switch2On) {
+    newMode = &gamePadMode;   // Full game menu
+  }
+
+  if (newMode != currentMode) {
+    if (currentMode) currentMode->exit();
+    currentMode = newMode;
+    currentMode->enter();
+  }
+
+  if (currentMode) {
+    currentMode->update();
+  }
+
+  delay(10);
+}
+
+
+===== PongGame.cpp =====
+#include "PongGame.h"
+#include <Arduino.h>
+
+PongGame::PongGame(TFTHandler& tftRef, Hardware& hwRef)
+    : tft(tftRef), hw(hwRef), sprite(&tft.getTFT())
+{
+// Leave empty - don't create sprite here
+}
+
+void PongGame::init() {
+  // Borrow RAM only when starting
+  if (!sprite.created()) {
+    sprite.createSprite(160, 128);
+  }
+  running = true;
+  score1 = score2 = 0;
+  paddle1Y = paddle2Y = 128 / 2 - PADDLE_HEIGHT / 2;
+  gameStartTime = millis();
+  lastSpeedRamp = gameStartTime;
+  speedMultiplier = 1.0f;
+  nextServePlayer = 1;
+  resetBall();
+}
+
+void PongGame::cleanup() {
+  // Return RAM to the system
+  if (sprite.created()) {
+    sprite.deleteSprite();
+  }
+}
+
+void PongGame::resetBall() {
+  if (nextServePlayer == 1) {
+    ballX = PADDLE_MARGIN + PADDLE_WIDTH + BALL_RADIUS + 2;
+    ballY = paddle1Y + PADDLE_HEIGHT / 2.0f;
+    ballVelX = serveVX * speedMultiplier;
+  } else {
+    ballX = 160 - PADDLE_MARGIN - PADDLE_WIDTH - BALL_RADIUS - 2;
+    ballY = paddle2Y + PADDLE_HEIGHT / 2.0f;
+    ballVelX = -serveVX * speedMultiplier;
+  }
+  ballVelY = random(-20, 21) / 10.0f * serveVY * speedMultiplier;
+}
+
+void PongGame::update() {
+  // Read joysticks
+  hw.joyLeft.update();
+  hw.joyRight.update();
+
+  float leftY = hw.joyLeft.getMappedY();
+  float rightY = hw.joyRight.getMappedY();
+
+  // Move paddles — correct direction
+  paddle1Y -= leftY * 5;
+  paddle2Y -= rightY * 5;
+  paddle1Y = constrain(paddle1Y, 0, 128 - PADDLE_HEIGHT);
+  paddle2Y = constrain(paddle2Y, 0, 128 - PADDLE_HEIGHT);
+
+  // Speed ramp: +10% every 10 seconds
+  unsigned long currentTime = millis();
+  if (currentTime - lastSpeedRamp >= 10000) {
+    speedMultiplier *= 1.1f;
+    lastSpeedRamp = currentTime;
+  }
+
+  // Update ball
+  ballX += ballVelX * speedMultiplier;
+  ballY += ballVelY * speedMultiplier;
+
+  // Top/bottom bounce
+  if (ballY - BALL_RADIUS <= 0 || ballY + BALL_RADIUS >= 128) {
+    ballVelY = -ballVelY;
+  }
+
+    // Left paddle collision — check if ball is moving LEFT (towards the paddle)
+    if (ballVelX < 0 && 
+        ballX - BALL_RADIUS <= PADDLE_MARGIN + PADDLE_WIDTH &&
+        ballX + BALL_RADIUS >= PADDLE_MARGIN &&
+        ballY >= paddle1Y && ballY <= paddle1Y + PADDLE_HEIGHT) {
+    
+    // Push ball out to the INNER surface of the paddle
+    ballX = PADDLE_MARGIN + PADDLE_WIDTH + BALL_RADIUS + 1;
+
+    // Reverse direction to move RIGHT (positive)
+    ballVelX = fabs(ballVelX) + 0.2f;
+
+    // Angle based on hit position
+    float hitOffset = (ballY - (paddle1Y + PADDLE_HEIGHT / 2.0f)) / (PADDLE_HEIGHT / 2.0f);
+    ballVelY = hitOffset * 5.0f * speedMultiplier;
+    }
+    // Right paddle collision — check if ball is moving RIGHT (towards the paddle)
+    if (ballVelX > 0 &&
+        ballX + BALL_RADIUS >= 160 - PADDLE_MARGIN - PADDLE_WIDTH &&
+        ballX - BALL_RADIUS <= 160 - PADDLE_MARGIN &&
+        ballY >= paddle2Y && ballY <= paddle2Y + PADDLE_HEIGHT) {
+        
+    // Push ball out to the INNER surface
+    ballX = 160 - PADDLE_MARGIN - PADDLE_WIDTH - BALL_RADIUS - 1;
+
+    // Reverse direction to move LEFT (negative)
+    ballVelX = -(fabs(ballVelX) + 0.2f);
+
+    float hitOffset = (ballY - (paddle2Y + PADDLE_HEIGHT / 2.0f)) / (PADDLE_HEIGHT / 2.0f);
+    ballVelY = hitOffset * 5.0f * speedMultiplier;
+    }
+
+  // Scoring
+  if (ballX < 0) {
+    score2++;
+    nextServePlayer = 1;
+    resetBall();
+  }
+  if (ballX > 160) {
+    score1++;
+    nextServePlayer = 2;
+    resetBall();
+  }
+
+  // Game over
+  if (score1 >= WINNING_SCORE || score2 >= WINNING_SCORE) {
+    drawGameOver();
+    cleanup();
+    running = false;
+  }
+}
+
+void PongGame::draw() {
+  sprite.fillSprite(TFT_BLACK);
+
+  // Center line
+  for (int y = 0; y < 128; y += 8) {
+    sprite.drawPixel(80, y, TFT_WHITE);
+  }
+
+  // Paddles
+  sprite.fillRect(PADDLE_MARGIN, paddle1Y, PADDLE_WIDTH, PADDLE_HEIGHT, TFT_CYAN);
+  sprite.fillRect(160 - PADDLE_MARGIN - PADDLE_WIDTH, paddle2Y, PADDLE_WIDTH, PADDLE_HEIGHT, TFT_MAGENTA);
+
+  // Ball
+  sprite.fillCircle((int)ballX, (int)ballY, BALL_RADIUS, TFT_WHITE);
+
+  // Score
+  sprite.setTextColor(TFT_WHITE);
+  sprite.setTextSize(2);
+  sprite.setCursor(40, 10);
+  sprite.print(score1);
+  sprite.setCursor(110, 10);
+  sprite.print(score2);
+
+  // Speed indicator
+  sprite.setTextSize(1);
+  sprite.setTextColor(TFT_LIGHTGREY);
+  sprite.setCursor(5, 120);
+  sprite.print("Speed: ");
+  sprite.print(speedMultiplier, 2);
+  sprite.print("x");
+
+  sprite.pushSprite(0, 0);
+}
+
+void PongGame::drawGameOver() {
+  tft.clearScreen();
+  tft.drawCenteredText("GAME OVER", 40, TFT_RED, 2);
+  char buf[32];
+  snprintf(buf, sizeof(buf), "P%d WINS!", score1 > score2 ? 1 : 2);
+  tft.drawCenteredText(buf, 70, TFT_YELLOW, 2);
+  tft.drawCenteredText("Back to menu...", 100, TFT_WHITE, 1);
+  delay(3000);
+}
+
+
+===== Potentiometer.cpp =====
+#include "Potentiometer.h"
+#include <Arduino.h>
+
+Potentiometer::Potentiometer(int pin)
+    : pin(pin)
+{
+  update();  // Initial read
+}
+
+void Potentiometer::update() {
+  rawValue = analogRead(pin);
+}
+
+int Potentiometer::getRaw() const {
+  return rawValue;
+}
+
+float Potentiometer::getNormalized(bool applyDeadzone) {
+  update();  // Ensure latest value
+
+  int value = rawValue;
+
+  if (applyDeadzone && abs(value - centerVal) < deadzone) {
+    value = centerVal;
+  }
+
+  if (value <= centerVal) {
+    if (value == centerVal) return 0.0f;
+    return mapFloat(value, minVal, centerVal, -1.0f, 0.0f);
+  } else {
+    return mapFloat(value, centerVal, maxVal, 0.0f, 1.0f);
+  }
+}
+
+float Potentiometer::getNormalizedRaw() {
+  return getNormalized(false);  // Full precision, no deadzone
+}
+
+void Potentiometer::beginCalibration(unsigned long durationMs) {
+  calibrating = true;
+  calibStart = millis();
+  calibDuration = durationMs;
+  minVal = rawValue;
+  maxVal = rawValue;
+  Serial.println("Pot calibration started - move to extremes");
+}
+
+bool Potentiometer::updateCalibration() {
+  if (!calibrating) return false;
+
+  update();
+
+  if (rawValue < minVal) minVal = rawValue;
+  if (rawValue > maxVal) maxVal = rawValue;
+
+  if (millis() - calibStart >= calibDuration) {
+    centerVal = (minVal + maxVal) / 2;
+    calibrating = false;
+    printCalibration();
+    return true;
+  }
+  return false;
+}
+
+void Potentiometer::endCalibration() {
+  if (calibrating) {
+    centerVal = (minVal + maxVal) / 2;
+    calibrating = false;
+    printCalibration();
+  }
+}
+
+void Potentiometer::printCalibration() const {
+  Serial.printf("Pot calibrated: min=%d, max=%d, center=%d, deadzone=±%d\n",
+                minVal, maxVal, centerVal, deadzone);
+}
+
+void Potentiometer::setMinMaxCenter(int minV, int maxV, int centerV) {
+  minVal = minV;
+  maxVal = maxV;
+  centerVal = centerV;
+  calibrating = false;
+}
+
+float Potentiometer::mapFloat(int val, int inMin, int inMax, float outMin, float outMax) const {
+  return outMin + (outMax - outMin) * (val - inMin) / float(inMax - inMin);
+}
+
+
+===== RacingGame.cpp =====
+#include "RacingGame.h"
+#include <Arduino.h>
+
+RacingGame::RacingGame(TFTHandler& tftRef, Hardware& hwRef)
+    : tft(tftRef), hw(hwRef), sprite(&tft.getTFT()) {}
+
+void RacingGame::init() {
+  if (!sprite.created()) sprite.createSprite(160, 128);
+  running = true;
+  playerX = 0;
+  baseSpeed = 1.0f;
+  trackPos = 0;
+  strikes = 0;
+  score = 0;
+  explosionTimer = 0;
+  lastSpeedBoostTime = millis();
+  lastStrikeTime = 0;
+  for(int i=0; i<MAX_OBSTACLES; i++) {
+    obstacles[i].active = false;
+    obstacles[i].passed = false;
+  }
+}
+
+void RacingGame::cleanup() {
+  if (sprite.created()) sprite.deleteSprite();
+}
+
+void RacingGame::spawnObstacle() {
+  for(int i=0; i<MAX_OBSTACLES; i++) {
+    if(!obstacles[i].active) {
+      obstacles[i].x = (random(-70, 71) / 100.0f);
+      obstacles[i].z = 100.0f;
+      obstacles[i].animalType = random(0, 3);
+      obstacles[i].active = true;
+      obstacles[i].passed = false;
+      break;
+    }
+  }
+}
+
+// 7-Pointed Red Star Splash Helper
+void drawStarSplash(TFT_eSprite &s, int x, int y, int size) {
+  int points = 7;
+  float angleStep = (2.0f * PI) / points;
+  for (int i = 0; i < points; i++) {
+    float angle = i * angleStep;
+    // Outer point
+    int x1 = x + cos(angle) * size;
+    int y1 = y + sin(angle) * size;
+    // Inner point (at 1/3 size for sharp points)
+    int x2 = x + cos(angle + angleStep/2) * (size/3);
+    int y2 = y + sin(angle + angleStep/2) * (size/3);
+    // Next outer point
+    int x3 = x + cos(angle + angleStep) * size;
+    int y3 = y + sin(angle + angleStep) * size;
+    
+    s.fillTriangle(x, y, x1, y1, x2, y2, TFT_RED);
+    s.fillTriangle(x, y, x2, y2, x3, y3, TFT_RED);
+  }
+}
+
+void RacingGame::update() {
+  hw.joyLeft.update();
+  hw.joyRight.update();
+
+  if (millis() - lastSpeedBoostTime >= 10000) {
+    baseSpeed *= 1.10f;
+    lastSpeedBoostTime = millis();
+  }
+
+  float boost = hw.joyRight.getMappedY();
+  currentSpeed = baseSpeed + (boost > 0.2f ? boost * 2.0f : 0);
+  playerX += hw.joyLeft.getMappedX() * 0.07f;
+  trackPos += currentSpeed;
+
+  if (random(0, 100) < 3) spawnObstacle();
+
+  for(int i=0; i<MAX_OBSTACLES; i++) {
+    if(obstacles[i].active) {
+      obstacles[i].z -= currentSpeed;
+
+      // TRIGGER EARLY: Collision check at z < 15
+      if (obstacles[i].z < 15 && obstacles[i].z > -5) {
+        if (abs(playerX - obstacles[i].x) < 0.35f) {
+           if (millis() - lastStrikeTime > 1550) {
+             strikes++;
+             lastStrikeTime = millis();
+             obstacles[i].active = false;
+             
+             // Setup Star Splash
+             explosionTimer = 12; 
+             explosionX = 80 + (playerX * 60);
+             
+             if(strikes >= MAX_STRIKES) endGame();
+           }
+        } else if (!obstacles[i].passed && obstacles[i].z < 0) {
+          score += 10;
+          obstacles[i].passed = true;
+        }
+      }
+      if (obstacles[i].z < -10) obstacles[i].active = false;
+    }
+  }
+
+  if (abs(playerX) > 0.85f) {
+    isOffRoad = true;
+    if (millis() - lastStrikeTime > 1500) {
+      strikes++;
+      lastStrikeTime = millis();
+      explosionTimer = 8;
+      explosionX = 80 + (playerX * 60);
+      if (strikes >= MAX_STRIKES) endGame();
+    }
+  } else isOffRoad = false;
+}
+
+void RacingGame::drawAnimal(float x, float y, int type, float scale) {
+  int s = (int)(scale * 12);
+  switch(type) {
+    case 0: // Cow
+      sprite.fillRoundRect(x, y, s+8, s+4, 2, TFT_WHITE);
+      sprite.fillCircle(x + s + 6, y + 2, s/2 + 1, TFT_WHITE);
+      sprite.fillCircle(x + 3, y + 3, s/4 + 1, TFT_BLACK);
+      break;
+    case 1: // Horse
+      sprite.fillRoundRect(x, y, s+10, s+4, 1, 0x9300);
+      sprite.fillRect(x + s + 7, y - 3, s/3 + 2, s+2, 0x9300);
+      break;
+    case 2: // Sheep
+      sprite.fillCircle(x, y, s + 3, TFT_WHITE);
+      sprite.fillCircle(x + 5, y, s + 3, TFT_WHITE);
+      sprite.fillCircle(x + 7, y + 2, s/3 + 2, TFT_BLACK);
+      break;
+  }
+}
+
+void RacingGame::draw() {
+  sprite.fillSprite(TFT_SKYBLUE);
+
+  // Draw Road
+  for (int y = 0; y < 64; y++) {
+    float perspective = (float)y / 64.0f;
+    float roadWidth = 30 + (perspective * 110);
+    float curveOffset = sin(trackPos * 0.02f) * (perspective * 40);
+    float centerX = 80 + curveOffset;
+    int screenY = 64 + y;
+    uint16_t grassColor = ((int)(trackPos + y*2) % 40 < 20) ? 0x03E0 : 0x02E0; 
+    sprite.drawFastHLine(0, screenY, 160, grassColor);
+    sprite.drawFastHLine(centerX - roadWidth/2, screenY, roadWidth, 0x4208);
+  }
+
+  // Draw Animals
+  for(int i=0; i<MAX_OBSTACLES; i++) {
+    if(obstacles[i].active) {
+      float p = (100.0f - obstacles[i].z) / 100.0f;
+      if(p > 0) {
+        float curveAtZ = sin((trackPos + obstacles[i].z) * 0.02f) * (p * 40);
+        float obsX = 80 + curveAtZ + (obstacles[i].x * (30 + p * 110));
+        float obsY = 64 + (p * 64);
+        drawAnimal(obsX, obsY, obstacles[i].animalType, p);
+      }
+    }
+  }
+
+  // Draw Car
+  drawCar(80 + (playerX * 60) - 15, 100);
+
+  // Draw Star Splash Effect
+  if (explosionTimer > 0) {
+    drawStarSplash(sprite, explosionX, 105, 15 + random(5));
+    explosionTimer--;
+  }
+
+  // UI (Always on Top)
+  sprite.setTextColor(TFT_WHITE, TFT_SKYBLUE);
+  sprite.setCursor(5, 5);
+  sprite.printf("SCORE: %d  SPD: %.1fx", score, baseSpeed);
+  sprite.setCursor(5, 15);
+  sprite.print("LIFE: ");
+  for(int i=0; i<MAX_STRIKES; i++) {
+    sprite.setTextColor(i < strikes ? TFT_RED : TFT_GREEN, TFT_SKYBLUE);
+    sprite.print(i < strikes ? "X " : "O ");
+  }
+
+  sprite.pushSprite(0, 0);
+}
+
+void RacingGame::drawCar(int x, int y) {
+  sprite.fillRoundRect(x, y + 4, 30, 12, 3, TFT_BLUE);
+  sprite.fillRoundRect(x + 5, y, 20, 8, 4, TFT_SKYBLUE);
+  sprite.fillRoundRect(x - 2, y + 10, 6, 8, 2, TFT_BLACK);
+  sprite.fillRoundRect(x + 26, y + 10, 6, 8, 2, TFT_BLACK);
+}
+
+void RacingGame::endGame() {
+  tft.getTFT().fillScreen(TFT_BLACK);
+  tft.drawCenteredText("GAME OVER!", 50, TFT_RED, 2);
+  delay(2000);
+  cleanup();
+  running = false;
+}
+
+
+===== RemoteControlMode.cpp =====
+#include "RemoteControlMode.h"
+#include <Arduino.h>
+
+extern bool Switch1On;
+extern bool Switch2On;
+
+RemoteControlMode::RemoteControlMode(TFTHandler& tftRef, Hardware& hw)
+    : Mode(tftRef),
+      joyRight(hw.joyRight), joyLeft(hw.joyLeft), keyboard(hw.keyboard),
+      encoderRight(hw.encoderRight), encoderLeft(hw.encoderLeft),
+      potRight(hw.potRight), potMid(hw.potMid), potLeft(hw.potLeft), imu(hw.imu)
+{
+  Serial.println("RemoteControlMode constructed - All sensors ready (raw joystick printing enabled)");
+}
+
+void RemoteControlMode::enter() {
+  tft.clearScreen();
+  tft.drawCenteredText("Remote Control Data", 8, TFT_CYAN, 1);
+
+  delay(500);  // Extra safety
+
+  if (!imu.begin()) {
+    Serial.println("IMU init failed - check wiring!");
+  } else {
+    Serial.println("IMU initialized successfully");
+  }
+}
+
+void RemoteControlMode::update() {
+
+  // === Read all current values ===
+  String currentKey = keyboard.getCurrentKey();
+  String pressedKey = keyboard.getPressedKey();
+
+  // Update joysticks (applies deadzone and mapping)
+  joyRight.update();
+  joyLeft.update();
+
+  // === RAW VALUES FOR CALIBRATION ===
+  int rawRX = joyRight.getRawX();
+  int rawRY = joyRight.getRawY();
+  int rawLX = joyLeft.getRawX();
+  int rawLY = joyLeft.getRawY();
+
+  // Mapped values for display
+  float joyRX = joyRight.getMappedX();
+  float joyRY = joyRight.getMappedY();
+  float joyLX = joyLeft.getMappedX();
+  float joyLY = joyLeft.getMappedY();
+
+  long encRight = encoderRight.getCounter();
+  long encLeft  = encoderLeft.getCounter();
+  bool encRBtn  = encoderRight.isButtonPressed();
+  bool encLBtn  = encoderLeft.isButtonPressed();
+
+  // === Potentiometers ===
+  potLeft.update();
+  potMid.update();
+  potRight.update();
+
+  int potL_raw = potLeft.getRaw();
+  int potM_raw = potMid.getRaw();
+  int potR_raw = potRight.getRaw();
+
+  // Normalized values for display (with deadzone)
+  float potL_norm = potLeft.getNormalized();
+  float potM_norm = potMid.getNormalized();
+  float potR_norm = potRight.getNormalized();
+
+  // === Safe IMU read at 10Hz ===
+  static bool imuReady = false;
+  if (!imuReady) {
+    if (imu.begin()) {
+      imuReady = true;
+    } else {
+      return;  // Try again next loop
+    }
+  }
+  static unsigned long lastIMURead = 0;
+  if (millis() - lastIMURead >= 100 && imuReady) {
+    imu.update();
+    lastIMURead = millis();
+  }
+
+  // === Flicker-free redraw only on change ===
+  static String lastKey = "";
+  static float lastRX = -10.0f, lastRY = -10.0f, lastLX = -10.0f, lastLY = -10.0f;
+  static long lastEncR = -999, lastEncL = -999;
+  static bool lastRBtn = false, lastLBtn = false;
+  static float lastPotL_norm = -10.0f, lastPotM_norm = -10.0f, lastPotR_norm = -10.0f;
+  static float lastAX = -999, lastAY = -999, lastAZ = -999;
+  static float lastGX = -999, lastGY = -999, lastGZ = -999;
+
+  bool changed = (currentKey != lastKey) ||
+                 (abs(joyRX - lastRX) > 0.05f) || (abs(joyRY - lastRY) > 0.05f) ||
+                 (abs(joyLX - lastLX) > 0.05f) || (abs(joyLY - lastLY) > 0.05f) ||
+                 (encRight != lastEncR) || (encLeft != lastEncL) ||
+                 (encRBtn != lastRBtn) || (encLBtn != lastLBtn) ||
+                 (abs(potL_norm - lastPotL_norm) > 0.05f) ||
+                 (abs(potM_norm - lastPotM_norm) > 0.05f) ||
+                 (abs(potR_norm - lastPotR_norm) > 0.05f) ||
+                 (abs(imu.ax - lastAX) > 0.1) || (abs(imu.ay - lastAY) > 0.1) || (abs(imu.az - lastAZ) > 0.1) ||
+                 (abs(imu.gx - lastGX) > 1.0) || (abs(imu.gy - lastGY) > 1.0) || (abs(imu.gz - lastGZ) > 1.0);
+
+  if (!changed) {
+    delay(50);
+    return;
+  }
+
+  // === Print to Serial Monitor whenever there is a change ===
+  /*
+  Serial.printf("Keyboard:\t%s\n", pressedKey="NONE" ? "None":pressedKey.c_str());
+  Serial.printf("RAW JS_R:\tX=%4d\tY=%4d\t\t JS_R:\tX=%4d\tY=%4d\n", rawLX, rawLY, rawRX, rawRY);
+  Serial.printf("Enc:\tL=%4d %s\tR=%5ld %s\n",
+                encLeft,  encLBtn ? "Select" : "None",
+                encRight, encRBtn ? "Select" : "None");
+  Serial.printf("POT RAW:\tL=%4d\tM=%4d\tR=%4d\n", potL_raw, potM_raw, potR_raw);
+  Serial.printf("IMU Accl X:%.1f Y:%.1f Z:%.1f  Gyro X:%.1f Y:%.1f Z:%.1f\n",
+                imu.ax, imu.ay, imu.az, imu.gx, imu.gy, imu.gz);
+  Serial.printf("\n");
+  */
+  Serial.printf("Key:%s JL X%4d Y%4d JR X%4d Y%4d EncL%2d %s EncR%2d POT:L%4d M%4d R%4d IMU AcclX:%+4.1f Y:%+4.1f Z:%+4.1f  Gyro X:%+4.1f Y:%+4.1f Z:%+4.1f\n",
+                pressedKey == "NONE" ? "None" : pressedKey.c_str(),
+                rawLX, rawLY,
+                rawRX, rawRY,
+                encLeft,  encLBtn ? "Select" : "None",
+                encRight, 
+                potL_raw, potM_raw, potR_raw,
+                imu.ax, imu.ay, imu.az,
+                imu.gx, imu.gy, imu.gz);
+
+  // Update last values
+  lastKey = currentKey;
+  lastRX = joyRX; lastRY = joyRY;
+  lastLX = joyLX; lastLY = joyLY;
+  lastEncR = encRight; lastEncL = encLeft;
+  lastRBtn = encRBtn; lastLBtn = encLBtn;
+  lastPotL_norm = potL_norm; lastPotM_norm = potM_norm; lastPotR_norm = potR_norm;
+  lastAX = imu.ax; lastAY = imu.ay; lastAZ = imu.az;
+  lastGX = imu.gx; lastGY = imu.gy; lastGZ = imu.gz;
+
+  // === Display settings ===
+  const int textSize = 1;
+  const int baseCharHeight = 8;
+  const int charHeight = baseCharHeight * textSize;
+  const int lineSpacing = 4;
+  const int startX = 10;
+  const int startY = 24;
+
+  int lineNum = 0;
+
+  tft.getTFT().setTextSize(textSize);
+
+  auto printLine = [&](uint16_t color, const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    char buffer[80];
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    int y = startY + (lineNum++ * (charHeight + lineSpacing));
+    int lineTop = y - (charHeight - 4); // Approximate top of text (adjust -2 if needed)
+    tft.getTFT().fillRect(startX, lineTop, 154, charHeight + 3, TFT_BLACK);
+    //tft.getTFT().fillRect(startX, y - charHeight/2 + 2, 140, charHeight + 2, TFT_BLACK);
+    tft.getTFT().setTextColor(color);
+    tft.getTFT().setCursor(startX, y);
+    tft.getTFT().println(buffer);
+  };
+
+  // === Lines ===
+  printLine(TFT_LIGHTGREY, "Switch 1:%s Switch 2:%s", Switch1On ? "On " : "Off", Switch2On ? "On " : "Off");
+
+  if (currentKey != "NONE") {
+    printLine(TFT_RED, "Keyboard: %s", currentKey.c_str());
+  } else {
+    printLine(TFT_YELLOW, "Keyboard: None");
+  }
+
+  printLine(TFT_SKYBLUE, "JS_R: %+5.2f %+5.2f", joyRX, joyRY);
+  printLine(TFT_SKYBLUE, "JS_L: %+5.2f %+5.2f", joyLX, joyLY);
+
+  printLine(TFT_ORANGE, "EncR: %3ld  %s", encRight, encRBtn ? "Select" : "None");
+  printLine(TFT_ORANGE, "EncL: %3ld  %s", encLeft,  encLBtn ? "Select" : "None");
+
+  // Pots - normalized -1.00 to 1.00 (with deadzone for stable display)
+  printLine(TFT_GREEN, "PotL:%+4.1f M:%+4.1f R:%+4.1f", potL_norm, potM_norm, potR_norm);
+
+  // IMU lines
+  printLine(TFT_MAGENTA, "AcclX:%+4.1f Y:%+4.1f Z:%+4.1f", imu.ax, imu.ay, imu.az);
+  printLine(TFT_MAGENTA, "GyroX:%+4.1f Y:%+4.1f Z:%+4.1f", imu.gx, imu.gy, imu.gz);
+
+  delay(50);
+}
+
+void RemoteControlMode::exit() {
+  Serial.println("Leaving Remote Control Mode");
+}
+
+
+===== RemoteGraphicMode.cpp =====
+#include "RemoteGraphicMode.h"
+#include <Arduino.h>
+#include <math.h>
+
+static const int JOYSTICK_DOT = 3; // smaller dot for both joysticks
+static const uint16_t JOYSTICK_COLOR = TFT_RED; // use red for joystick dots
+static const uint16_t ENCODER_COLOR = 0xFC60; // reddish-orange (RGB565)
+static const int RADIAL_POT_R = 12; // outer radius for radial encoders
+static const int RADIAL_STEPS = 16; // map ±16 counts -> ±1.0
+
+RemoteGraphicMode::RemoteGraphicMode(TFTHandler& tftRef, Hardware& hw)
+  : Mode(tftRef),
+    joyRight(hw.joyRight), joyLeft(hw.joyLeft), keyboard(hw.keyboard),
+    encoderRight(hw.encoderRight), encoderLeft(hw.encoderLeft), encoderMiddle(hw.encoderMiddle),
+    potLeft(hw.potLeft), potMid(hw.potMid), potRight(hw.potRight), imu(hw.imu)
+{
+}
+
+void RemoteGraphicMode::enter() {
+  tft.clearScreen();
+  tft.drawCenteredText("Remote Control Graphic", 8, TFT_CYAN, 1);
+  // Draw static circles for left and right joysticks at fixed coordinates
+  TFT_eSPI& disp = tft.getTFT();
+  const int left_cx = 23;
+  const int right_cx = 136; // fixed right position per request
+  const int cy = 110;
+  const int radius = 15;
+
+  disp.drawCircle(left_cx, cy, radius, TFT_WHITE);
+    disp.fillCircle(left_cx, cy, JOYSTICK_DOT, JOYSTICK_COLOR);
+
+  disp.drawCircle(right_cx, cy, radius, TFT_WHITE);
+    disp.fillCircle(right_cx, cy, JOYSTICK_DOT, JOYSTICK_COLOR);
+
+  // Draw rectangle frame (upper-left corner x=46, y=88)
+  const int rect_x = 46;
+  const int rect_y = 94;
+  const int rect_w = 69;
+  const int rect_h = 33;
+    disp.drawRect(rect_x, rect_y, rect_w, rect_h, TFT_RED);
+
+  // Draw IMU reserved area (upper box) at x=46, y=38, w=69, h=40
+  const int imu_x = 46;
+    const int imu_y = 61;
+    const int imu_w = 69;
+    const int imu_h = 30;
+  disp.drawRect(imu_x, imu_y, imu_w, imu_h, TFT_CYAN);
+  // Reserve inner area (fill with black) for future IMU graphs
+  disp.fillRect(imu_x + 1, imu_y + 12, imu_w - 2, imu_h - 13, TFT_BLACK);
+  // Draw a fixed outer circle (play area) and initial ball centered inside the IMU box
+  const int imu_cx = imu_x + imu_w / 2;
+  const int imu_cy = imu_y + imu_h / 2;
+  const int ball_r = 4;
+  const int fixed_r = 10; // slightly bigger than ball
+  // clear inner IMU area already done above; draw fixed circle outline
+  disp.drawCircle(imu_cx, imu_cy, fixed_r, TFT_WHITE);
+  // draw initial ball at center
+  disp.fillCircle(imu_cx, imu_cy, ball_r, TFT_YELLOW);
+
+  // Draw circular buttons (outline rings) with provided coordinates
+  // Button coords and radius per request
+  const int btn_left_x = 56;
+  const int btn_left_y = 110;
+    const int btn_right_x = 82;
+  const int btn_right_y = 110;
+  const int btn_up_x = 69;
+  const int btn_up_y = 102;
+  const int btn_down_x = 69;
+  const int btn_down_y = 118;
+  const int btn_select_x = 105;
+  const int btn_select_y = 110;
+  const int btn_r = 6; // requested radius
+  const int inset = 2;
+
+  // Draw rings: outer yellow, inner black to create visible yellow outline
+  disp.fillCircle(btn_left_x, btn_left_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_left_x, btn_left_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_right_x, btn_right_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_right_x, btn_right_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_up_x, btn_up_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_up_x, btn_up_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_down_x, btn_down_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_down_x, btn_down_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_select_x, btn_select_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_select_x, btn_select_y, btn_r - inset, TFT_BLACK);
+
+  // Draw encoder rings and initial values (previous rotary encoders)
+  const int encL_cx = 23;
+  const int encL_cy = 72;
+  const int encR_cx = 136;
+  const int encR_cy = 72; // updated per request
+  const int enc_outer_r = 13;
+  const int enc_inner_r = 10;
+
+  // Left encoder ring (reddish-orange)
+  disp.fillCircle(encL_cx, encL_cy, enc_outer_r, ENCODER_COLOR);
+  disp.fillCircle(encL_cx, encL_cy, enc_inner_r, TFT_BLACK);
+  // Right encoder ring (reddish-orange)
+  disp.fillCircle(encR_cx, encR_cy, enc_outer_r, ENCODER_COLOR);
+  disp.fillCircle(encR_cx, encR_cy, enc_inner_r, TFT_BLACK);
+
+  // Initial encoder text
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%+2ld", encoderLeft.getCounter());
+  disp.setTextSize(1);
+  disp.setTextColor(ENCODER_COLOR);
+  int16_t tw = disp.textWidth(buf);
+  disp.setCursor(encL_cx - tw/2, encL_cy - 4);
+  disp.println(buf);
+
+  snprintf(buf, sizeof(buf), "%+2ld", encoderRight.getCounter());
+  disp.setTextColor(ENCODER_COLOR);
+  tw = disp.textWidth(buf);
+  disp.setCursor(encR_cx - tw/2, encR_cy - 4);
+  disp.println(buf);
+
+  // Draw three radial encoders (Left, Middle, Right) near top area
+  const int rPotL_x = 40;
+  const int rPotM_x = 80;
+  const int rPotR_x = 120;
+  const int rPot_y = 35;
+  // outer circle outlines (use white outline, inner cleared)
+  disp.drawCircle(rPotL_x, rPot_y, RADIAL_POT_R, TFT_WHITE);
+  disp.fillCircle(rPotL_x, rPot_y, RADIAL_POT_R - 3, TFT_BLACK);
+  disp.drawCircle(rPotM_x, rPot_y, RADIAL_POT_R, TFT_WHITE);
+  disp.fillCircle(rPotM_x, rPot_y, RADIAL_POT_R - 3, TFT_BLACK);
+  disp.drawCircle(rPotR_x, rPot_y, RADIAL_POT_R, TFT_WHITE);
+  disp.fillCircle(rPotR_x, rPot_y, RADIAL_POT_R - 3, TFT_BLACK);
+  // initial radial wipes (center line) in per-dial colors
+  disp.drawLine(rPotL_x, rPot_y, rPotL_x, rPot_y - RADIAL_POT_R, TFT_RED);
+  disp.drawLine(rPotM_x, rPot_y, rPotM_x, rPot_y - RADIAL_POT_R, TFT_GREEN);
+  disp.drawLine(rPotR_x, rPot_y, rPotR_x, rPot_y - RADIAL_POT_R, TFT_BLUE);
+}
+
+void RemoteGraphicMode::update() {
+  // Update both joysticks
+  joyLeft.update();
+  joyRight.update();
+
+  // Read current analog keyboard state (UP/DOWN/LEFT/RIGHT/SELECT/NONE)
+  String key = keyboard.getCurrentKey();
+
+  float lmx = joyLeft.getMappedX();
+  float lmy = joyLeft.getMappedY();
+  float rmx = joyRight.getMappedX();
+  float rmy = joyRight.getMappedY();
+
+  TFT_eSPI& disp = tft.getTFT();
+  const int left_cx = 23;
+  const int right_cx = 136; // fixed per request
+  const int cy = 110;
+  const int radius = 15;
+
+  int lx = left_cx + static_cast<int>(lmx * (radius - 6));
+  int ly = cy - static_cast<int>(lmy * (radius - 6));
+
+  int rx = right_cx + static_cast<int>(rmx * (radius - 6));
+  int ry = cy - static_cast<int>(rmy * (radius - 6));
+
+  // Clamp to display bounds to avoid drawing off-screen
+  lx = constrain(lx, 0, disp.width() - 1);
+  ly = constrain(ly, 0, disp.height() - 1);
+  rx = constrain(rx, 0, disp.width() - 1);
+  ry = constrain(ry, 0, disp.height() - 1);
+
+  static bool first = true;
+  static int lastLX = left_cx, lastLY = cy;
+  static int lastRX = right_cx, lastRY = cy;
+
+  if (first) {
+    lastLX = left_cx; lastLY = cy;
+    lastRX = right_cx; lastRY = cy;
+    first = false;
+  }
+
+  // Update left dot
+  if (lastLX != lx || lastLY != ly) {
+    disp.fillCircle(lastLX, lastLY, JOYSTICK_DOT, TFT_BLACK);
+    disp.drawCircle(left_cx, cy, radius, TFT_WHITE);
+      disp.fillCircle(lx, ly, JOYSTICK_DOT, JOYSTICK_COLOR);
+    lastLX = lx; lastLY = ly;
+  }
+
+  // Update right dot
+  if (lastRX != rx || lastRY != ry) {
+    disp.fillCircle(lastRX, lastRY, JOYSTICK_DOT, TFT_BLACK);
+    disp.drawCircle(right_cx, cy, radius, TFT_WHITE);
+      disp.fillCircle(rx, ry, JOYSTICK_DOT, JOYSTICK_COLOR);
+    lastRX = rx; lastRY = ry;
+  }
+
+  // Update encoder displays and right-button fill toggle
+  const int encL_cx = 23;
+  const int encL_cy = 72;
+  const int encR_cx = 136;
+  const int encR_cy = 72;
+  const int enc_outer_r = 13;
+  const int enc_inner_r = 10;
+
+  static long lastEncL = LONG_MIN;
+  static long lastEncR = LONG_MIN;
+
+  long curEncL = encoderLeft.getCounter();
+  long curEncR = encoderRight.getCounter();
+
+  // update potentiometers for radial displays
+  potLeft.update();
+  potMid.update();
+  potRight.update();
+  float potL_norm = potLeft.getNormalized();
+  float potM_norm = potMid.getNormalized();
+  float potR_norm = potRight.getNormalized();
+
+  // --- IMU-driven rolling ball ---
+  // IMU box geometry (must match enter())
+  const int imu_x = 46;
+  const int imu_y = 61;
+  const int imu_w = 69;
+  const int imu_h = 30;
+  const int imu_cx = imu_x + imu_w / 2;
+  const int imu_cy = imu_y + imu_h / 2;
+  const int ball_r = 4;
+  const int fixed_r = 10;
+
+  // Read IMU and map to constrained values
+  imu.update();
+  float ax = imu.ax; // positive -> roll left per request
+  float ay = imu.ay; // positive -> roll up per request
+  // constrain to requested ranges
+  ax = constrain(ax, -4.0f, 4.0f);
+  ay = constrain(ay, -2.0f, 2.0f);
+  // normalize to -1..1
+  float nx = ax / 4.0f;
+  float ny = ay / 2.0f;
+
+  // Map normalized values to pixel offsets inside the IMU rectangle
+  // available travel is rectangle half-size minus ball radius and a 1px margin
+  int availX = (imu_w / 2) - ball_r - 1;
+  int availY = (imu_h / 2) - ball_r - 1;
+  // positive ax -> ball moves left (negative x offset)
+  int offx = static_cast<int>(-nx * availX);
+  int offy = static_cast<int>(-ny * availY);
+
+  int ballX = imu_cx + offx;
+  int ballY = imu_cy + offy;
+
+  static int lastBallX = imu_cx;
+  static int lastBallY = imu_cy;
+  // erase last ball and redraw fixed circle to avoid artifacts
+  if (lastBallX != ballX || lastBallY != ballY) {
+    // Erase previous ball using inner IMU background color, then restore IMU box outline
+    disp.fillCircle(lastBallX, lastBallY, ball_r + 1, TFT_BLACK);
+    // Redraw inner IMU fill area and outline to avoid erasing borders
+    disp.fillRect(imu_x + 1, imu_y + 12, imu_w - 2, imu_h - 13, TFT_BLACK);
+    disp.drawRect(imu_x, imu_y, imu_w, imu_h, TFT_CYAN);
+    // Redraw fixed circle on top of the restored background
+    disp.drawCircle(imu_cx, imu_cy, fixed_r, TFT_WHITE);
+    lastBallX = ballX; lastBallY = ballY;
+  }
+  // draw new ball
+  disp.fillCircle(ballX, ballY, ball_r, TFT_YELLOW);
+
+  if (curEncL != lastEncL) {
+    // redraw left ring (reddish-orange outline)
+    disp.fillCircle(encL_cx, encL_cy, enc_outer_r, ENCODER_COLOR);
+    disp.fillCircle(encL_cx, encL_cy, enc_inner_r, TFT_BLACK);
+    // draw value
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%+2ld", curEncL);
+    disp.setTextSize(1);
+    disp.setTextColor(ENCODER_COLOR);
+    int16_t tw = disp.textWidth(buf);
+    disp.setCursor(encL_cx - tw/2, encL_cy - 4);
+    disp.println(buf);
+    lastEncL = curEncL;
+  }
+
+  // Radial encoders: Left, Middle, Right at y=30 with outer radius RADIAL_POT_R
+  const int rPotL_x = 40;
+  const int rPotM_x = 80;
+  const int rPotR_x = 120;
+  const int rPot_y = 35;
+
+  auto drawRadial = [&](int cx, int cy, int r, float v, uint16_t textColor) {
+    // v is normalized in [-1,1]
+    if (v > 1.0f) v = 1.0f; if (v < -1.0f) v = -1.0f;
+    // clear inner area and redraw outer ring (white outline)
+    disp.fillCircle(cx, cy, r - 3, TFT_BLACK);
+    disp.drawCircle(cx, cy, r, TFT_WHITE);
+
+    const float start = -M_PI_2; // top
+    const float sweep = 180.0f * (M_PI / 180.0f); // ±180 degrees full range
+    float end = start + v * sweep;
+
+    // If v == 0: draw single vertical center line in dial color
+    if (fabs(v) < 1e-6) {
+      disp.drawLine(cx, cy, cx, cy - r, textColor);
+    } else {
+      // draw radial wipe from start to end (step ~3 degrees)
+      const float step = 3.0f * (M_PI / 180.0f);
+      if (end > start) {
+        for (float a = start; a <= end; a += step) {
+          int x = cx + static_cast<int>(cos(a) * r);
+          int y = cy + static_cast<int>(sin(a) * r);
+          disp.drawLine(cx, cy, x, y, textColor);
+        }
+      } else {
+        for (float a = start; a >= end; a -= step) {
+          int x = cx + static_cast<int>(cos(a) * r);
+          int y = cy + static_cast<int>(sin(a) * r);
+          disp.drawLine(cx, cy, x, y, textColor);
+        }
+      }
+    }
+
+    // Draw the numeric value centered below the circle
+    char valbuf[16];
+    snprintf(valbuf, sizeof(valbuf), "%+5.2f", v);
+    disp.setTextSize(1);
+    int16_t tw = disp.textWidth(valbuf);
+    int textX = cx - tw / 2;
+    int textY = cy + r + 2;
+    // clear previous text area
+    disp.fillRect(textX - 1, textY - 1, tw + 2, 10, TFT_BLACK);
+    disp.setTextColor(textColor);
+    disp.setCursor(textX, textY);
+    disp.println(valbuf);
+  };
+
+  // Only redraw radial encoders when changed
+  static float lastRadL = 9999.0f, lastRadM = 9999.0f, lastRadR = 9999.0f;
+  if (fabs(potL_norm - lastRadL) > 0.001f) { drawRadial(rPotL_x, rPot_y, RADIAL_POT_R, potL_norm, TFT_RED); lastRadL = potL_norm; }
+  if (fabs(potM_norm - lastRadM) > 0.001f) { drawRadial(rPotM_x, rPot_y, RADIAL_POT_R, potM_norm, TFT_GREEN); lastRadM = potM_norm; }
+  if (fabs(potR_norm - lastRadR) > 0.001f) { drawRadial(rPotR_x, rPot_y, RADIAL_POT_R, potR_norm, TFT_BLUE); lastRadR = potR_norm; }
+
+  // Right encoder highlight: blink once on press (redraw on press AND release)
+  static bool lastRightPressed = false;
+  bool rightPressed = encoderRight.isButtonPressed();
+
+  if (curEncR != lastEncR || rightPressed != lastRightPressed) {
+    // redraw right ring; if currently pressed fill inner with YELLOW, otherwise black
+    disp.fillCircle(encR_cx, encR_cy, enc_outer_r, ENCODER_COLOR);
+    if (rightPressed) {
+      disp.fillCircle(encR_cx, encR_cy, enc_inner_r, TFT_YELLOW);
+    } else {
+      disp.fillCircle(encR_cx, encR_cy, enc_inner_r, TFT_BLACK);
+    }
+    // draw encoder value
+    char buf2[16];
+    snprintf(buf2, sizeof(buf2), "%+2ld", curEncR);
+    disp.setTextSize(1);
+    disp.setTextColor(ENCODER_COLOR);
+    int16_t tw2 = disp.textWidth(buf2);
+    disp.setCursor(encR_cx - tw2/2, encR_cy - 4);
+    disp.println(buf2);
+    lastEncR = curEncR;
+    lastRightPressed = rightPressed;
+  }
+
+  // Update D-pad/select visuals: draw yellow outline rings then fill active key
+  const int btn_left_x = 56;
+  const int btn_left_y = 110;
+    const int btn_right_x = 82;
+  const int btn_right_y = 110;
+  const int btn_up_x = 69;
+  const int btn_up_y = 102;
+  const int btn_down_x = 69;
+  const int btn_down_y = 118;
+  const int btn_select_x = 105;
+  const int btn_select_y = 110;
+  const int btn_r = 6;
+  const int inset = 2;
+
+  // Draw rings (outline)
+  disp.fillCircle(btn_left_x, btn_left_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_left_x, btn_left_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_right_x, btn_right_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_right_x, btn_right_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_up_x, btn_up_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_up_x, btn_up_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_down_x, btn_down_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_down_x, btn_down_y, btn_r - inset, TFT_BLACK);
+
+  disp.fillCircle(btn_select_x, btn_select_y, btn_r, TFT_YELLOW);
+  disp.fillCircle(btn_select_x, btn_select_y, btn_r - inset, TFT_BLACK);
+
+  // Fill active key with solid yellow
+  if (key == "UP") {
+    disp.fillCircle(btn_up_x, btn_up_y, btn_r, TFT_YELLOW);
+  } else if (key == "DOWN") {
+    disp.fillCircle(btn_down_x, btn_down_y, btn_r, TFT_YELLOW);
+  } else if (key == "LEFT") {
+    disp.fillCircle(btn_left_x, btn_left_y, btn_r, TFT_YELLOW);
+  } else if (key == "RIGHT") {
+    disp.fillCircle(btn_right_x, btn_right_y, btn_r, TFT_YELLOW);
+  } else if (key == "SELECT") {
+    disp.fillCircle(btn_select_x, btn_select_y, btn_r, TFT_YELLOW);
+  }
+
+  delay(30);
+}
+
+void RemoteGraphicMode::exit() {
+  // nothing special
+}
+
+
+
+===== RotaryEncoder.cpp =====
+#include "RotaryEncoder.h"
+
+// State transition table for robust rotary decoding
+// Indexes: previous state (2 bits CLK/DT) << 2 | current state
+const int8_t RotaryEncoder::table[16] = {
+  0,  -1,  1,  0,   // 00xx
+  1,   0,  0, -1,   // 01xx
+  -1,   0,  0,  1,   // 10xx
+  0,   1, -1,  0    // 11xx
+};
+
+RotaryEncoder::RotaryEncoder(int clk, int dt, int sw)
+    : clkPin(clk), dtPin(dt), swPin(sw) {
+  pinMode(clkPin, INPUT_PULLUP);
+  pinMode(dtPin, INPUT_PULLUP);
+  if (swPin != -1) pinMode(swPin, INPUT_PULLUP);
+
+  // Read initial state
+  lastState = (digitalRead(clkPin) << 1) | digitalRead(dtPin);
+}
+
+long RotaryEncoder::getCounter() {
+  int currentState = (digitalRead(clkPin) << 1) | digitalRead(dtPin);
+  if (currentState != lastState) {
+    counter += table[(lastState << 2) | currentState];
+    lastState = currentState;
+  }
+  return counter;
+}
+
+bool RotaryEncoder::isButtonPressed() {
+  if (swPin == -1) return false;
+
+  bool current = (digitalRead(swPin) == LOW);
+  if (current && !lastSw) {
+    delay(10);  // Simple debounce
+    if (digitalRead(swPin) == LOW) {
+      swPressed = true;
+    }
+  } else {
+    swPressed = false;
+  }
+  lastSw = current;
+  return swPressed;
+}
+
+
+===== SpaceShooterGame.cpp =====
+#include "SpaceShooterGame.h"
+#include <Arduino.h>
+
+SpaceShooterGame::SpaceShooterGame(TFTHandler& tftRef, Hardware& hwRef)
+    : tft(tftRef), hw(hwRef), sprite(&tft.getTFT()) {}
+
+void SpaceShooterGame::init() {
+  if (!sprite.created()) sprite.createSprite(160, 128);
+  running = true;
+  playerX = 74;
+  score = 0;
+  lastShot = millis();
+  lastEnemySpawn = millis();
+  for (int i = 0; i < MAX_BULLETS; i++) bullets[i].active = false;
+  for (int i = 0; i < MAX_ENEMIES; i++) enemies[i].active = false;
+}
+
+void SpaceShooterGame::cleanup() {
+  if (sprite.created()) sprite.deleteSprite();
+}
+
+void SpaceShooterGame::update() {
+  hw.joyLeft.update();
+  hw.joyRight.update();
+  playerX += hw.joyLeft.getMappedX() * 5;
+  playerX = constrain(playerX, 0, 160 - PLAYER_WIDTH);
+
+  if (hw.joyRight.getMappedY() > 0.5f && millis() - lastShot > 250) {
+    for (int i = 0; i < MAX_BULLETS; i++) {
+      if (!bullets[i].active) {
+        bullets[i].x = playerX + (PLAYER_WIDTH / 2);
+        bullets[i].y = playerY;
+        bullets[i].active = true;
+        lastShot = millis();
+        break;
+      }
+    }
+  }
+
+  if (millis() - lastEnemySpawn > 1200) spawnEnemy();
+
+  for (int i = 0; i < MAX_BULLETS; i++) {
+    if (bullets[i].active) {
+      bullets[i].y -= 5;
+      if (bullets[i].y < 0) bullets[i].active = false;
+      for (int j = 0; j < MAX_ENEMIES; j++) {
+        if (enemies[j].active && abs(bullets[i].x - (enemies[j].x + enemies[j].size/2)) < enemies[j].size && abs(bullets[i].y - (enemies[j].y + enemies[j].size/2)) < enemies[j].size) {
+          bullets[i].active = false;
+          enemies[j].active = false;
+          score += (enemies[j].type + 1) * 10;
+        }
+      }
+    }
+  }
+
+  for (int i = 0; i < MAX_ENEMIES; i++) {
+    if (enemies[i].active) {
+      enemies[i].y += enemies[i].speed;
+      if (enemies[i].y > 128) enemies[i].active = false;
+      if (abs(playerX + 6 - (enemies[i].x + enemies[i].size/2)) < 8 && abs(playerY + 6 - (enemies[i].y + enemies[i].size/2)) < 8) {
+        endGame();
+      }
+    }
+  }
+}
+
+void SpaceShooterGame::spawnEnemy() {
+  for (int i = 0; i < MAX_ENEMIES; i++) {
+    if (!enemies[i].active) {
+      enemies[i].type = random(0, 3);
+      enemies[i].y = -15;
+      enemies[i].x = random(10, 140);
+      enemies[i].active = true;
+      if (enemies[i].type == 0) { enemies[i].size = 12; enemies[i].speed = 0.7f; enemies[i].color = TFT_RED; }
+      else if (enemies[i].type == 1) { enemies[i].size = 9; enemies[i].speed = 1.3f; enemies[i].color = TFT_MAGENTA; }
+      else { enemies[i].size = 8; enemies[i].speed = 2.2f; enemies[i].color = TFT_ORANGE; }
+      lastEnemySpawn = millis();
+      break;
+    }
+  }
+}
+
+void SpaceShooterGame::draw() {
+  sprite.fillSprite(TFT_BLACK);
+  for(int i=0; i<8; i++) sprite.drawPixel(random(160), random(128), 0x7BEF);
+  drawPlayer((int)playerX, playerY);
+  for (int i = 0; i < MAX_BULLETS; i++) if (bullets[i].active) sprite.fillCircle(bullets[i].x, bullets[i].y, 2, TFT_YELLOW);
+  for (int i = 0; i < MAX_ENEMIES; i++) if (enemies[i].active) drawEnemy(enemies[i]);
+  sprite.setTextColor(TFT_WHITE);
+  sprite.setCursor(5, 5);
+  sprite.printf("SCORE: %d", score);
+  sprite.pushSprite(0, 0);
+}
+
+void SpaceShooterGame::drawPlayer(int x, int y) {
+  sprite.fillTriangle(x, y + 12, x + 6, y, x + 12, y + 12, TFT_CYAN);
+  sprite.fillRect(x + 5, y + 4, 2, 8, TFT_WHITE);
+  sprite.fillRect(x + 4, y + 10, 4, 3, TFT_RED);
+}
+
+void SpaceShooterGame::drawEnemy(Enemy& e) {
+  if (e.type == 0) sprite.fillSmoothRoundRect(e.x, e.y, e.size, e.size, 2, e.color);
+  else if (e.type == 1) { sprite.fillRect(e.x, e.y, e.size, e.size, e.color); sprite.drawRect(e.x-1, e.y-1, e.size+2, e.size+2, TFT_WHITE); }
+  else { 
+    sprite.drawLine(e.x, e.y, e.x + e.size, e.y + e.size, e.color); 
+    sprite.drawLine(e.x + e.size, e.y, e.x, e.y + e.size, e.color); 
+  }
+}
+
+void SpaceShooterGame::endGame() {
+  tft.getTFT().fillScreen(TFT_BLACK);
+  tft.drawCenteredText("GAME OVER", 50, TFT_RED, 2);
+  delay(2000);
+  cleanup();
+  running = false;
+}
+
+
+===== StarshipGame.cpp =====
+#include "StarshipGame.h"
+#include <Arduino.h>
+
+static const int FRAME_W = 140;
+static const int FRAME_H = 80;
+static const int FRAME_X = 10;
+static const int FRAME_Y = 25;
+
+StarshipGame::StarshipGame(TFTHandler& tftRef, Hardware& hwRef)
+    : Mode(tftRef), hw(hwRef), sprite(&tftRef.getTFT()) {}
+
+void StarshipGame::init() {
+    if (!sprite.created()) {
+        sprite.createSprite(FRAME_W, FRAME_H);
+    }
+    
+    // --- Automatic Calibration ---
+    // Capture the current IMU position as "Level" the moment the game starts
+    hw.imu.update(); 
+    pitchOffset = hw.imu.getPitch();
+    rollOffset = hw.imu.getRoll();
+    
+    state = PLAYING; // Start playing immediately
+    score = 0;
+    resetObstacle();
+}
+
+void StarshipGame::cleanup() {
+    if (sprite.created()) {
+        sprite.deleteSprite();
+    }
+}
+
+void StarshipGame::enter() {
+    tft.clearScreen();
+    // Brief splash text so the user knows calibration is happening
+    tft.drawCenteredText("CALIBRATING...", 50, TFT_CYAN, 1);
+    delay(200); // Small delay to let the sensor settle
+    init();
+}
+
+void StarshipGame::exit() {
+    cleanup();
+}
+
+void StarshipGame::resetObstacle() {
+    obstacleZ = 100.0f;
+    obsX = (float)random(-30, 31);
+    obsY = (float)random(-20, 21);
+}
+
+std::pair<int, int> StarshipGame::project(float x, float y, float z) {
+    float factor = 50.0f / (z + 0.001f); 
+    return {(int)(x * factor) + (FRAME_W / 2), (int)(y * factor) + (FRAME_H / 2)};
+}
+
+void StarshipGame::update() {
+    hw.imu.update();
+    sprite.fillSprite(TFT_BLACK);
+
+    if (state == PLAYING) {
+        // Use the offsets captured during init()
+        float p = (hw.imu.getPitch() - pitchOffset) * (PI / 180.0f);
+        float r = (hw.imu.getRoll() - rollOffset) * (PI / 180.0f);
+
+        // 1. Draw Tunnel
+        uint16_t tunnelColor = 0x3186;
+        auto tl = project(-60, -40, 5); auto tr = project(60, -40, 5);
+        auto bl = project(-60, 40, 5);  auto br = project(60, 40, 5);
+        sprite.drawLine(tl.first, tl.second, (FRAME_W/2)-5, (FRAME_H/2)-2, tunnelColor);
+        sprite.drawLine(tr.first, tr.second, (FRAME_W/2)+5, (FRAME_H/2)-2, tunnelColor);
+        sprite.drawLine(bl.first, bl.second, (FRAME_W/2)-5, (FRAME_H/2)+2, tunnelColor);
+        sprite.drawLine(br.first, br.second, (FRAME_W/2)+5, (FRAME_H/2)+2, tunnelColor);
+
+        // 2. Obstacle Logic
+        obstacleZ -= 3.0f; 
+        if (obstacleZ <= 1.0f) {
+            resetObstacle();
+            score++;
+        }
+        
+        auto p1 = project(obsX - 15, obsY - 10, obstacleZ);
+        auto p2 = project(obsX + 15, obsY + 10, obstacleZ);
+        if (obstacleZ > 1.0f) {
+            sprite.drawRect(p1.first, p1.second, p2.first - p1.first, p2.second - p1.second, TFT_RED);
+        }
+
+        // 3. Draw Ship (Positioned by Pitch/Roll)
+        int shipX = (FRAME_W / 2) + (int)(r * 150.0f);
+        int shipY = (FRAME_H / 2) + (int)(p * 150.0f);
+        sprite.drawLine(shipX - 10, shipY, shipX + 10, shipY, TFT_CYAN);
+        sprite.drawLine(shipX, shipY - 4, shipX, shipY + 2, TFT_WHITE);
+
+        sprite.setTextColor(TFT_GREEN);
+        sprite.setCursor(2, 2);
+        sprite.printf("Score: %d", score);
+    }
+
+    sprite.pushSprite(FRAME_X, FRAME_Y);
+}
+
+
+===== TFTHandler.cpp =====
+#include "TFTHandler.h"
+
+TFTHandler::TFTHandler() : tft() {}
+
+void TFTHandler::begin() {
+  tft.init();
+  tft.setRotation(3);        // Your working rotation
+  clearScreen();
+}
+
+void TFTHandler::clearScreen(uint16_t color) {
+  tft.fillScreen(color);
+}
+
+void TFTHandler::drawCenteredText(const char* text, int y, uint16_t color, int textSize) {
+  tft.setTextColor(color);
+  tft.setTextSize(textSize);
+  int16_t x = (tft.width() - tft.textWidth(text)) / 2;
+  tft.setCursor(x, y);
+  tft.println(text);
+}
+
+
+===== ToggleSwitch.cpp =====
+#include "ToggleSwitch.h"
+#include <Arduino.h>
+
+ToggleSwitch::ToggleSwitch(int pin) : pin(pin) {
+  pinMode(pin, INPUT_PULLUP);
+}
+
+bool ToggleSwitch::isOn() {
+  bool current = (digitalRead(pin) == LOW);
+  if (current != lastState) {
+    delay(50);  // Debounce
+    current = (digitalRead(pin) == LOW);
+    lastState = current;
+  }
+  return current;
+}
+
+

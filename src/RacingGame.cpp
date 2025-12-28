@@ -194,7 +194,7 @@ void RacingGame::drawCar(int x, int y) {
 
 void RacingGame::endGame() {
   tft.getTFT().fillScreen(TFT_BLACK);
-  tft.drawCenteredText("TOTALED!", 50, TFT_RED, 2);
+  tft.drawCenteredText("GAME OVER!", 50, TFT_RED, 2);
   delay(2000);
   cleanup();
   running = false;

@@ -6,14 +6,16 @@ GamePadMode::GamePadMode(TFTHandler& tftRef, Hardware& hwRef)
       hw(hwRef),
       pongGame(tftRef, hwRef),
       racingGame(tftRef, hwRef),
-      spaceShooterGame(tftRef, hwRef)
+      spaceShooterGame(tftRef, hwRef),
+      starshipGame(tftRef, hwRef),
+      balanceGame(tftRef, hwRef)
 {
 }
 
 void GamePadMode::enter() {
   currentGame = MENU;
   selectedGame = 0;
-  drawMenu(); // Draw once upon entry
+  drawMenu(); 
 }
 
 void GamePadMode::drawMenu() {
@@ -21,14 +23,14 @@ void GamePadMode::drawMenu() {
   tft.drawCenteredText("Game Pad Mode", 8, TFT_CYAN, 1);
 
   for (int i = 0; i < numGames; i++) {
-    int y = 40 + i * 20;
+    int y = 25 + i * 15;
     if (i == selectedGame) {
       tft.getTFT().setTextColor(TFT_YELLOW);
-      tft.getTFT().setCursor(25, y);
+      tft.getTFT().setCursor(20, y);
       tft.getTFT().print("> ");
     } else {
       tft.getTFT().setTextColor(TFT_WHITE);
-      tft.getTFT().setCursor(35, y);
+      tft.getTFT().setCursor(25, y);
     }
     tft.getTFT().println(gameNames[i]);
   }
@@ -38,40 +40,55 @@ void GamePadMode::drawMenu() {
 }
 
 void GamePadMode::startGame(int index) {
-  // Clear RAM of any "ghost" sprites before starting
-  pongGame.cleanup();
-  racingGame.cleanup();
+  // 1. Clear the WHOLE screen to remove menu text and orange instructions
+  tft.clearScreen();
+  
+  // 2. Clear RAM of any "ghost" sprites before starting
+  balanceGame.cleanup();
   spaceShooterGame.cleanup();
+  starshipGame.cleanup();
+  racingGame.cleanup();
+  pongGame.cleanup();
 
+  // 3. Mapping based on your requested order: 
+  // 0:BALANCE, 1:SHOOTER, 2:STARSHIP, 3:RACING, 4:PONG
   if (index == 0) {
-    currentGame = PONG;
-    pongGame.init();
+    currentGame = BALANCE;
+    balanceGame.init();
   } else if (index == 1) {
-    currentGame = FLAPPY; // This refers to RacingGame in your enum
-    racingGame.init();
-  } else if (index == 2) {
     currentGame = SHOOTER;
     spaceShooterGame.init();
+  } else if (index == 2) {
+    currentGame = STARSHIP;
+    starshipGame.init();
+  } else if (index == 3) {
+    currentGame = RACING;
+    racingGame.init();
+  } else if (index == 4) {
+    currentGame = PONG;
+    pongGame.init();
   }
 }
 
 void GamePadMode::update() {
-  // 1. Always check the physical hardware state
+  // 1. Check physical hardware state
   String pressed = hw.keyboard.getPressedKey();
 
-  // 2. Universal Back/Exit Logic
+  // 2. Universal Back/Exit Logic (SELECT button)
   if (pressed == "SELECT") {
     if (currentGame != MENU) {
-      // Cleanup the active game's RAM
-      if (currentGame == PONG) pongGame.cleanup();
-      else if (currentGame == FLAPPY) racingGame.cleanup();
+      // Cleanup the active game's RAM based on current state
+      if (currentGame == BALANCE) balanceGame.cleanup();
       else if (currentGame == SHOOTER) spaceShooterGame.cleanup();
-      
+      else if (currentGame == STARSHIP) starshipGame.cleanup();
+      else if (currentGame == RACING) racingGame.cleanup();
+      else if (currentGame == PONG) pongGame.cleanup();
+
       currentGame = MENU;
       drawMenu();
       return; 
     } else {
-      // If already in MENU, start the selected game
+      // If in MENU, start the highlighted game
       startGame(selectedGame);
       return;
     }
@@ -86,31 +103,42 @@ void GamePadMode::update() {
       selectedGame = (selectedGame + 1) % numGames;
       drawMenu();
     }
-    return; // Don't run game updates if in menu
+    return; 
   }
 
-  // 4. Game Run Loops
-  // These only run if currentGame != MENU
-  if (currentGame == PONG) {
-    pongGame.update();
-    pongGame.draw();
-    if (!pongGame.isRunning()) { currentGame = MENU; drawMenu(); }
-  } 
-  else if (currentGame == FLAPPY) {
-    racingGame.update();
-    racingGame.draw();
-    if (!racingGame.isRunning()) { currentGame = MENU; drawMenu(); }
+  // 4. Game Run Loops (Mapped to GameState enum)
+  if (currentGame == BALANCE) {
+    balanceGame.update();
+    balanceGame.draw();
+    if (!balanceGame.isRunning()) { currentGame = MENU; drawMenu(); }
   } 
   else if (currentGame == SHOOTER) {
     spaceShooterGame.update();
     spaceShooterGame.draw();
     if (!spaceShooterGame.isRunning()) { currentGame = MENU; drawMenu(); }
   }
+  else if (currentGame == STARSHIP) {
+    starshipGame.update();
+    starshipGame.draw();
+    if (!starshipGame.isRunning()) { currentGame = MENU; drawMenu(); }
+  }
+  else if (currentGame == RACING) {
+    racingGame.update();
+    racingGame.draw();
+    if (!racingGame.isRunning()) { currentGame = MENU; drawMenu(); }
+  } 
+  else if (currentGame == PONG) {
+    pongGame.update();
+    pongGame.draw();
+    if (!pongGame.isRunning()) { currentGame = MENU; drawMenu(); }
+  }
 }
 
 void GamePadMode::exit() {
   // Ensure all RAM is freed when leaving GamePadMode entirely
-  pongGame.cleanup();
-  racingGame.cleanup();
+  balanceGame.cleanup();
   spaceShooterGame.cleanup();
+  starshipGame.cleanup();
+  racingGame.cleanup();
+  pongGame.cleanup();
 }
