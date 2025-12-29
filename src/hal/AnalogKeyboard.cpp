@@ -5,6 +5,7 @@ AnalogKeyboard::AnalogKeyboard(int pin) : pin(pin) {}
 String AnalogKeyboard::getCurrentKey() {
   int val = analogRead(pin);
 
+  // Resistance Ladder Thresholds
   if (val > 4000) return "LEFT";
   if (val > 3200 && val < 3700) return "UP";
   if (val > 2500 && val < 2900) return "DOWN";
@@ -12,6 +13,11 @@ String AnalogKeyboard::getCurrentKey() {
   if (val > 600 && val < 1000) return "SELECT";
 
   return "NONE";
+}
+
+// New method: Returns true as long as the button is held
+bool AnalogKeyboard::isKeyHeld(String keyName) {
+  return (getCurrentKey() == keyName);
 }
 
 String AnalogKeyboard::getPressedKey() {

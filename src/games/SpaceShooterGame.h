@@ -1,21 +1,24 @@
 #ifndef SPACESHOOTERGAME_H
 #define SPACESHOOTERGAME_H
 
-#include "hal/TFTHandler.h"
-#include "hal/Hardware.h"
+#include "Activity.h" // Updated include
 
-class SpaceShooterGame {
+class SpaceShooterGame : public Activity { // Added inheritance
 public:
   SpaceShooterGame(TFTHandler& tft, Hardware& hw);
-  void init();
-  void update();
-  void draw();
+  
+  // Mark core methods as override
+  void init() override;
+  void update() override;
+  void draw() override;
+  
   void cleanup();
   bool isRunning() const { return running; }
 
 private:
-  TFTHandler& tft;
-  Hardware& hw;
+  // REMOVED: TFTHandler& tft; <-- Inherited from Activity
+  // REMOVED: Hardware& hw;   <-- Inherited from Activity
+  
   bool running = true;
   float playerX;
   const int playerY = 110;

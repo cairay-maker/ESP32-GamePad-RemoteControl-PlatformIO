@@ -1,26 +1,22 @@
 #ifndef BALANCE_GAME_H
 #define BALANCE_GAME_H
 
-#include "modes/Mode.h"
-#include "hal/Hardware.h"
-#include <TFT_eSPI.h>
+#include "Activity.h"
 #include <utility> 
 
-class BalanceGame : public Mode {
+class BalanceGame : public Activity {
 public:
     BalanceGame(TFTHandler& tftRef, Hardware& hwRef);
     
-    void init();           
+    // Use override to satisfy Activity.h requirements
+    void init() override;           
     void update() override;
-    void draw();            
+    void draw() override;            
     void enter() override;
     void exit() override;
     
-    void cleanup();
-    bool isRunning() { return true; }
-
 private:
-    Hardware& hw;
+    // REMOVED: Hardware& hw; <-- Inherited from Activity.h
 
     // Simulation Variables - Beam 1
     float ballX, ballVelocity, beamAngle;      
@@ -30,18 +26,16 @@ private:
 
     bool isReleased; 
 
-    // PID Constants (Gold Standard)
+    // PID Constants
     const float Kp = 0.85f;
     const float Ki = 0.02f;
     const float Kd = 0.45f;
 
     float dynamicKp, dynamicKi, dynamicKd;
     
-    // PID State - Beam 1 (Uses Raw Kp, Ki, Kd)
+    // PID State
     float errorPrior;
     float integral;
-
-    // PID State - Beam 2 (Uses Dynamic Gains)
     float errorPrior2;
     float integral2;
 

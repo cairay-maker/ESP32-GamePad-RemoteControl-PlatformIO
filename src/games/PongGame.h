@@ -1,21 +1,23 @@
 #ifndef PONGGAME_H
 #define PONGGAME_H
 
-#include "hal/TFTHandler.h"
-#include "hal/Hardware.h"
+#include "Activity.h" // Crucial: This replaces individual hal includes
 
-class PongGame {
+class PongGame : public Activity {
 public:
   PongGame(TFTHandler& tft, Hardware& hw);
-  void init();
-  void update();
-  void draw();
-  void cleanup();
-  bool isRunning() const { return running; }
+  void init() override;
+  void update() override;
+  void draw() override;
+  
+  // Note: cleanup() was not in the Activity base class, 
+  // we use exit() instead if you want to follow the pattern.
+  void exit() override { running = false; }
 
 private:
-  TFTHandler& tft;
-  Hardware& hw;
+  // DELETE: TFTHandler& tft;  <-- Already in Activity.h
+  // DELETE: Hardware& hw;    <-- Already in Activity.h
+  
   bool running = true;
   bool gameOver = false;
 
@@ -24,7 +26,7 @@ private:
   #define BALL_RADIUS 3
   #define PADDLE_MARGIN 5
 
-  const int winningScore = 5; // Winning score setting
+  const int winningScore = 5;
 
   float ballX, ballY, ballVelX, ballVelY;
   float paddle1Y, paddle2Y;

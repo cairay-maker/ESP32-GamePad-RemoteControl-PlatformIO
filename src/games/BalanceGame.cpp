@@ -1,18 +1,16 @@
 #include "games/BalanceGame.h"
 #include <Arduino.h>
 
-// Updated offsets for the 160x128 screen
 static const int SCREEN_CENTER_X = 80; 
 static const int SCREEN_CENTER_Y = 64; 
 
 BalanceGame::BalanceGame(TFTHandler& tftRef, Hardware& hwRef)
-    : Mode(tftRef), hw(hwRef) {} 
+    : Activity(tftRef, hwRef) {} 
 
 void BalanceGame::init() {
-    resetSim(); // The linker was failing here
+    resetSim();
 }
 
-// Added the missing implementation
 void BalanceGame::resetSim() {
     ballX = 0; ballVelocity = 0; beamAngle = 0;
     ballX2 = 0; ballVelocity2 = 0; beamAngle2 = 0;
@@ -28,12 +26,12 @@ void BalanceGame::enter() {
 std::pair<int, int> BalanceGame::project(float x, float y, float z) {
     float focalLength = 100.0f;
     int screenX = (int)((x * focalLength) / (z + 100.0f)) + SCREEN_CENTER_X;
-    int screenY = (int)((y * focalLength) / (z + 100.0f)) + SCREEN_CENTER_Y - 0; //ajust 1st beam position
+    int screenY = (int)((y * focalLength) / (z + 100.0f)) + SCREEN_CENTER_Y; 
     return {screenX, screenY};
 }
 
 void BalanceGame::update() {
-    // 1. Pull data from unified hw.state
+    // Uses 'hw' inherited from Activity
     float multP = 1.0f + hw.state.potL; 
     float multI = 1.0f + hw.state.potM; 
     float multD = 1.0f + hw.state.potR; 
@@ -59,7 +57,6 @@ void BalanceGame::update() {
     ballX2 = constrain(ballX2, -55.0f, 55.0f);
 
     if (isReleased) {
-        // PID Logic
         float error1 = 0 - ballX; 
         integral = constrain(integral + error1, -50, 50);
         float deriv1 = error1 - errorPrior;
@@ -74,7 +71,6 @@ void BalanceGame::update() {
         beamAngle2 = constrain(beamAngle2, -25.0f, 25.0f);
         errorPrior2 = error2;
 
-        // Physics
         float rad1 = beamAngle * (M_PI / 180.0f);
         ballVelocity += sin(rad1) * 0.35f;
         ballVelocity *= 0.98f; 
@@ -91,13 +87,12 @@ void BalanceGame::update() {
 }
 
 void BalanceGame::draw() {
+    // Uses 'tft' inherited from Activity
     TFT_eSprite& c = tft.canvas;
-    // Note: 'c.fillSprite(TFT_BLACK)' is called in GamePadMode::update() 
-    // before this function is called to prevent the "paint over" effect.
     
     float beamHalfLength = 55.0f;
 
-    // --- 1. Draw Beam 1 (Cyan - Raw) ---
+    // Beam 1
     float rad1 = beamAngle * (M_PI / 180.0f);
     auto pStart1 = project(-cos(rad1)*beamHalfLength, -sin(rad1)*beamHalfLength, 0);
     auto pEnd1   = project(cos(rad1)*beamHalfLength, sin(rad1)*beamHalfLength, 0);
@@ -106,7 +101,7 @@ void BalanceGame::draw() {
     auto pBall1 = project(cos(rad1)*ballX, (sin(rad1)*ballX)-6, 0);
     c.fillCircle(pBall1.first, pBall1.second, 4, TFT_CYAN);
 
-    // --- 2. Draw Beam 2 (Green - Adjusted) ---
+    // Beam 2
     float rad2 = beamAngle2 * (M_PI / 180.0f);
     int yOff2 = 30; 
     auto pStart2 = project(-cos(rad2)*beamHalfLength, -sin(rad2)*beamHalfLength, 0);
@@ -116,9 +111,8 @@ void BalanceGame::draw() {
     auto pBall2 = project(cos(rad2)*ballX2, (sin(rad2)*ballX2)-6, 0);
     c.fillCircle(pBall2.first, pBall2.second + yOff2, 4, TFT_GREEN);
 
-    // --- 3. HUD (Restored Ang Line) ---
+    // HUD
     c.setTextSize(1);
-    
     c.setTextColor(TFT_CYAN);
     c.setCursor(10, 5);
     c.printf("Raw P:%4.2f I:%4.2f D:%4.2f", Kp, Ki, Kd);
@@ -127,15 +121,12 @@ void BalanceGame::draw() {
     c.setTextColor(TFT_GREEN);
     c.printf("Adj P:%4.2f I:%4.2f D:%4.2f", dynamicKp, dynamicKi, dynamicKd);
 
-    // RESTORED LINE:
     c.setCursor(10, 25);
     c.setTextColor(TFT_ORANGE);
     c.printf("Ang: %+4.1f vs %+4.1f", beamAngle, beamAngle2);
 
-    // Footer
     c.setTextColor(TFT_RED);
     c.drawCentreString("R.Joy + Pots to Adj", 80, 118, 1);
 }
 
 void BalanceGame::exit() {}
-void BalanceGame::cleanup() {}

@@ -1,35 +1,44 @@
 #include "Hardware.h"
-#include <WiFi.h> // Include to explicitly turn it off
+#include <WiFi.h>
 
 void Hardware::readAll(uint8_t modeId) {
-  // Explicitly disable Wi-Fi to free up ADC2 if it was accidentally on
+  // 1. Disable Wi-Fi once to stabilize ADC
   static bool wifiOff = false;
   if (!wifiOff) {
     WiFi.mode(WIFI_OFF);
     wifiOff = true;
   }
 
-// 1. Safety: Only update IMU if it's actually there
+  // 2. IMU Initialization Guard (Safety check added back)
   static bool imuInitialized = false;
   if (!imuInitialized) {
     if (imu.begin()) {
       imuInitialized = true;
+      Serial.println("IMU Initialized Successfully.");
+    } else {
+      // Don't log this every frame or it will crash the serial buffer
+      static unsigned long lastError = 0;
+      if (millis() - lastError > 5000) {
+        Serial.println("IMU Not Found - Check Wiring.");
+        lastError = millis();
+      }
     }
   }
 
-  // 2. Analog Reads with "Cool Down"
-  // We use 100us because it's the safest margin for ESP32 ADC1/ADC2 switching
-  joyLeft.update();   delayMicroseconds(10);
-  joyRight.update();  delayMicroseconds(10);
-  potLeft.update();   delayMicroseconds(10);
-  potMid.update();    delayMicroseconds(10);
-  potRight.update();  delayMicroseconds(10);
+  // 3. Analog Reads with Settling Delays
+  // Increased to 50us to prevent ADC Lock errors during Serial spam
+  joyLeft.update();   delayMicroseconds(50);
+  joyRight.update();  delayMicroseconds(50);
+  potLeft.update();   delayMicroseconds(50);
+  potMid.update();    delayMicroseconds(50);
+  potRight.update();  delayMicroseconds(50);
 
+  // 4. Conditional IMU Update
   if (imuInitialized) {
     imu.update();
   }
 
-  // 2. Map Analog/IMU to State
+  // 5. Mapping
   state.joyLX = joyLeft.getMappedX();
   state.joyLY = joyLeft.getMappedY();
   state.joyRX = joyRight.getMappedX();
@@ -39,13 +48,23 @@ void Hardware::readAll(uint8_t modeId) {
   state.potM = potMid.getNormalized();
   state.potR = potRight.getNormalized();
 
+  // Capture RAW Data (Directly from the sensors)
+  state.joyLXRaw = joyLeft.getRawX(); 
+  state.joyLYRaw = joyLeft.getRawY();
+  state.joyRXRaw = joyRight.getRawX();
+  state.joyRYRaw = joyRight.getRawY();
+  
+  state.potLRaw  = potLeft.getRaw();
+  state.potMRaw  = potMid.getRaw();
+  state.potRRaw  = potRight.getRaw();
+
   state.ax = imu.ax; state.ay = imu.ay; state.az = imu.az;
   state.gx = imu.gx; state.gy = imu.gy; state.gz = imu.gz;
 
   state.encL = encoderLeft.getCounter();
   state.encR = encoderRight.getCounter();
 
-  // 3. Bit-Packing Buttons
+  // 6. Bit-Packing
   state.buttons = 0;
   String key = keyboard.getCurrentKey();
   if (key == "UP")     state.buttons |= (1 << 0);

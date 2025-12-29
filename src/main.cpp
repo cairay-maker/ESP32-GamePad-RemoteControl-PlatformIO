@@ -1,88 +1,115 @@
 #include <Arduino.h>
-#include "hal/Hardware.h"   // [CHANGE] Hardware now includes ToggleSwitch.h internally
+#include "hal/Hardware.h"
 #include "hal/TFTHandler.h"
-#include "modes/GamePadMode.h"
-#include "modes/IMUControlMode.h"
-#include "modes/RemoteTextMode.h"
-#include "modes/RemoteGraphicMode.h"
+#include "Activity.h"
+
+// Gatekeeper Menus
+#include "games/GameMenu.h"
+#include "system/SystemMenu.h"
 
 // Global objects
 TFTHandler tft;
-Hardware hw; // [CHANGE] hw now owns Switch1 (19) and Switch2 (25) internally
+Hardware hw; 
 
-// Modes - References the same 'hw' instance for data
-GamePadMode gamePadMode(tft, hw);           
-IMUControlMode imuControlMode(tft, hw);     
-RemoteTextMode remoteTextMode(tft, hw);
-RemoteGraphicMode remoteGraphicMode(tft, hw);
+// Menus
+GameMenu gameMenu(tft, hw);           
+SystemMenu systemMenu(tft, hw);
 
-// Current active mode tracking
-Mode* currentMode = nullptr;
-uint8_t currentModeId = 0;
+// State tracking
+Activity* currentActivity = nullptr;
+uint8_t currentActivityId = 0;
+ControllerState lastLoggedState; 
 
-void setup() {
-  Serial.begin(115200);
-  delay(2000); 
+/**
+ * Log hardware values only when they change significantly.
+ */
 
-  Serial.println("\n=== ESP32 Dual Switch Controller ===");
-  Serial.println("System: Unified HAL & ControllerState Enabled");
-  Serial.println("Started - Dec 28, 2025");
+void logHardwareChanges(float rawAnalogThreshold, float imuThreshold) {
+  static unsigned long lastLogTime = 0;
+  if (millis() - lastLogTime < 100) return; 
 
-  tft.begin();
-  delay(500);
+  bool changed = false;
 
-  // Initial mode check based on physical switch positions at boot
-  bool s1 = hw.Switch1.isOn();
-  bool s2 = hw.Switch2.isOn();
+  // 1. Change Detection
+  if (abs(hw.state.joyLXRaw - lastLoggedState.joyLXRaw) > rawAnalogThreshold) changed = true;
+  if (abs(hw.state.joyLYRaw - lastLoggedState.joyLYRaw) > rawAnalogThreshold) changed = true;
+  if (abs(hw.state.joyRXRaw - lastLoggedState.joyRXRaw) > rawAnalogThreshold) changed = true;
+  if (abs(hw.state.joyRYRaw - lastLoggedState.joyRYRaw) > rawAnalogThreshold) changed = true;
+  if (abs(hw.state.potLRaw  - lastLoggedState.potLRaw)  > rawAnalogThreshold) changed = true;
+  if (abs(hw.state.potMRaw  - lastLoggedState.potMRaw)  > rawAnalogThreshold) changed = true;
+  if (abs(hw.state.potRRaw  - lastLoggedState.potRRaw)  > rawAnalogThreshold) changed = true;
   
-  // Logical Mode Mapping
-  if (!s1 && !s2)      { currentMode = &remoteTextMode; currentModeId = 3; }
-  else if (!s1 && s2) { currentMode = &remoteGraphicMode; currentModeId = 2; }
-  else if (s1 && !s2) { currentMode = &imuControlMode;    currentModeId = 4; }
-  else                { currentMode = &gamePadMode;       currentModeId = 1; }
+  // Trigger on any state change for binary/discrete inputs
+  if (hw.state.buttons != lastLoggedState.buttons)         changed = true;
+  if (hw.state.encL != lastLoggedState.encL)               changed = true;
+  if (hw.state.encR != lastLoggedState.encR)               changed = true;
+  if (abs(hw.state.ax - lastLoggedState.ax) > imuThreshold) changed = true;
 
-  currentMode->enter();
+  if (changed) {
+    lastLogTime = millis();
+    
+    // Extract Switch bits (Switch1=bit 7, Switch2=bit 8)
+    int sw1 = (hw.state.buttons & (1 << 7)) ? 1 : 0;
+    int sw2 = (hw.state.buttons & (1 << 8)) ? 1 : 0;
+    
+    // Ordered: Joysticks -> Pots -> Encoders -> Keyboard -> Switches
+    Serial.printf("RAW | JL:[%4d,%4d] JR:[%4d,%4d] | POT L:%4d M:%4d R:%4d | ENC L:%2d R:%2d | KEY:%-6s | SW:%d %d\n",
+                  hw.state.joyLXRaw, hw.state.joyLYRaw,
+                  hw.state.joyRXRaw, hw.state.joyRYRaw,
+                  hw.state.potLRaw,  hw.state.potMRaw,  hw.state.potRRaw,
+                  hw.state.encL,     hw.state.encR,
+                  hw.keyboard.getCurrentKey().c_str(),
+                  sw1, sw2);
+    
+    lastLoggedState = hw.state;
+  }
+} 
+
+ void setup() {
+  Serial.begin(115200);
+  delay(2000); // Critical delay for hardware voltage stabilization
+
+  Serial.println("\n=== ESP32 Dual-World Multi-Controller ===");
+  tft.begin();
+  
+  // Perform initial read to set boot world
+  hw.readAll(0);
+  
+  if (hw.Switch1.isOn()) {
+    currentActivity = &gameMenu;
+    currentActivityId = 1;
+  } else {
+    currentActivity = &systemMenu;
+    currentActivityId = 2;
+  }
+
+  currentActivity->enter();
 }
 
 void loop() {
-  // 1. [CHANGE] Determine mode based on internal hardware switch states
+  // 1. World Selection
   bool s1 = hw.Switch1.isOn();
-  bool s2 = hw.Switch2.isOn();
+  Activity* nextActivity = (s1) ? (Activity*)&gameMenu : (Activity*)&systemMenu;
+  uint8_t nextId = (s1) ? 1 : 2;
 
-  Mode* nextMode = nullptr;
-  uint8_t nextModeId = 0;
-
-  if (!s1 && !s2) {
-    nextMode = &remoteTextMode;
-    nextModeId = 3;
-  } else if (!s1 && s2) {
-    nextMode = &remoteGraphicMode;
-    nextModeId = 2;
-  } else if (s1 && !s2) {
-    nextMode = &imuControlMode;
-    nextModeId = 4;
-  } else {
-    nextMode = &gamePadMode;
-    nextModeId = 1;
+  // 2. Transitions
+  if (nextActivity != currentActivity) {
+    if (currentActivity) currentActivity->exit();
+    currentActivity = nextActivity;
+    currentActivityId = nextId;
+    currentActivity->enter();
   }
 
-  // 2. Handle Mode Transitions
-  if (nextMode != currentMode) {
-    if (currentMode) currentMode->exit();
-    currentMode = nextMode;
-    currentModeId = nextModeId;
-    currentMode->enter();
+  // 3. Global Hardware Refresh
+  hw.readAll(currentActivityId);
+
+  // 4. Logger with 100/100/0.4 Thresholds
+  logHardwareChanges(200, 0.4);
+
+  // 5. Update Activity
+  if (currentActivity) {
+    currentActivity->update();
   }
 
-  // 3. [CHANGE] Global Sync: Refresh all sensors and bit-pack switches into state
-  // This populates hw.state for use inside the currentMode->update()
-  hw.readAll(currentModeId);
-
-  // 4. Update the active mode (Modes now draw from hw.state)
-  if (currentMode) {
-    currentMode->update();
-  }
-
-  // Small delay for OS stability and power management
-  delay(10);
+  delay(5);
 }

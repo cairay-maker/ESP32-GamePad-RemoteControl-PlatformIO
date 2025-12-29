@@ -10,11 +10,18 @@
 #include <Arduino.h>
 
 typedef struct __attribute__((packed)) {
+
+  // Mapped values (for games/UI)
   float joyLX, joyLY, joyRX, joyRY; 
-  float potL, potM, potR;           
+  float potL, potM, potR;      
+  
+  // RAW values (for calibration)
+  int joyLXRaw, joyLYRaw, joyRXRaw, joyRYRaw;
+  int potLRaw, potMRaw, potRRaw;
+  
   float ax, ay, az;                 
   float gx, gy, gz;                 
-  long encL, encM, encR;            
+  long encL, encR;            
   uint16_t buttons;                 
   uint8_t modeId;                   
 } ControllerState;

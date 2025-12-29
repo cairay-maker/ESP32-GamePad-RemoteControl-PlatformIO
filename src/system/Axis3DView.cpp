@@ -1,4 +1,4 @@
-#include "modes/IMUControlMode.h"
+#include "system/Axis3DView.h"
 #include <Arduino.h>
 
 // Dimensions for the 3D "Viewport"
@@ -7,40 +7,31 @@ static const int FRAME_H = 80;
 static const int FRAME_X = 10; 
 static const int FRAME_Y = 25;                 
 
-IMUControlMode::IMUControlMode(TFTHandler& tftRef, Hardware& hwRef)
-    : Mode(tftRef), hw(hwRef) {
-    // Note: We no longer need the 'sprite' member variable
+Axis3DView::Axis3DView(TFTHandler& tftRef, Hardware& hwRef)
+    : Activity(tftRef, hwRef) { // FIXED: Pass both to Activity base class
 }
 
-void IMUControlMode::enter() {
-    // Clear the global canvas once when entering
+void Axis3DView::enter() {
     tft.canvas.fillSprite(TFT_BLACK);
 }
 
-void IMUControlMode::update() {
-    // 1. Get a reference to our Global Canvas
-    TFT_eSprite& c = tft.canvas;
-
-    // 2. Clear the canvas frame for this update
+void Axis3DView::update() {
+    TFT_eSprite& c = tft.canvas; // Inherited from Activity
     c.fillSprite(TFT_BLACK);
 
-    // 3. Draw Static UI Elements to the Canvas
     tft.drawCenteredText("IMU 3D ISOMETRIC AXIS", 8, TFT_CYAN, 1);
     tft.drawCenteredText("Press Select to Calibrate", 115, TFT_LIGHTGREY, 1);
     
-    // Draw the Viewport Border
     c.drawRect(FRAME_X - 1, FRAME_Y - 1, FRAME_W + 2, FRAME_H + 2, 0x7BEF);
 
-    // 4. Input Handling (Calibration)
+    // Use 'hw' inherited from Activity
     if (hw.keyboard.getPressedKey() == "SELECT") {
         hw.imu.calibrate();
     }
 
-    // 5. Data Source: Pull from hw.state
     float p = hw.imu.getPitch() * (PI / 180.0f);
     float r = hw.imu.getRoll() * (PI / 180.0f);
 
-    // Calculate center of the viewport relative to the whole screen
     int scx = FRAME_X + (FRAME_W / 2);
     int scy = FRAME_Y + (FRAME_H / 2) + 10; 
 
@@ -65,7 +56,7 @@ void IMUControlMode::update() {
 
     auto origin = project(0, 0, 0);
 
-    // --- 3D Drawing: Ellipse and Axis ---
+    // --- 3D Drawing ---
     float rx = 1.33f; 
     float ry = 0.66f;
     int segments = 16;
@@ -82,7 +73,6 @@ void IMUControlMode::update() {
     drawThickLine(origin, project(0, 0.7f, 0), TFT_GREEN); // Y
     drawThickLine(origin, project(0, 0, 1.0f), TFT_BLUE);  // Z
 
-    // --- IMU Stats Rendering ---
     char buf[64];
     snprintf(buf, sizeof(buf), "P:%+05.1f R:%+05.1f Y:%+05.1f", 
              hw.imu.getPitch(), hw.imu.getRoll(), hw.imu.getYawRate());
@@ -91,10 +81,8 @@ void IMUControlMode::update() {
     c.setCursor(FRAME_X + 2, FRAME_Y + 2);
     c.print(buf);
 
-    // 6. [CRITICAL] Push the final composite to the screen
     tft.updateDisplay();
 }
 
-void IMUControlMode::exit() {
-    // No more local sprite to delete! Option 1 manages the RAM.
+void Axis3DView::exit() {
 }

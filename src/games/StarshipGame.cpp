@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 StarshipGame::StarshipGame(TFTHandler& tftRef, Hardware& hwRef) 
-    : tft(tftRef), hw(hwRef) {}
+    : Activity(tftRef, hwRef) {} // Correctly passes both to base class
 
 void StarshipGame::init() {
     running = true;
@@ -38,20 +38,16 @@ void StarshipGame::update() {
         lastSpeedUp = millis();
     }
 
-    // GET IMU DATA DIRECTLY
-    // Roll (tilt left/right) and Pitch (tilt forward/back)
-    // We constrain the input so a ~45 degree tilt gives full screen movement
+    // Accesses 'hw' inherited from Activity.h
     float r = hw.imu.getRoll() * (PI / 180.0f);  
     float p = hw.imu.getPitch() * (PI / 180.0f); 
 
-    // shipWorld coordinates used for collision detection
     float shipWorldX = r * 60.0f; 
     float shipWorldY = p * 60.0f;
 
     for (int i = 0; i < MAX_STARSHIP_OBS; i++) {
         obs[i].z -= speed;
         
-        // Collision detection at the "near" plane
         if (obs[i].z < 10.0f && obs[i].z > 0.0f) {
             float dx = obs[i].x - shipWorldX;
             float dy = obs[i].y - shipWorldY;
@@ -66,10 +62,10 @@ void StarshipGame::update() {
 }
 
 void StarshipGame::draw() {
+    // Accesses 'tft' inherited from Activity.h
     TFT_eSprite& c = tft.canvas;
     c.fillSprite(TFT_BLACK);
 
-    // Static Star Field / Tunnel Lines
     c.drawLine(0, 0, 160, 128, 0x18C3);
     c.drawLine(160, 0, 0, 128, 0x18C3);
 
@@ -81,20 +77,17 @@ void StarshipGame::draw() {
         }
     }
 
-    // RE-CALCULATE RETICLE POSITION FOR DRAWING
     float r = hw.imu.getRoll() * (PI / 180.0f);
     float p = hw.imu.getPitch() * (PI / 180.0f);
 
-    int sx = 80 + (int)(r * 90); // Multiplier adjusted for screen width
-    int sy = 64 + (int)(p * 80); // Multiplier adjusted for screen height
+    int sx = 80 + (int)(r * 90); 
+    int sy = 64 + (int)(p * 80); 
 
-    // Draw Crosshair
     c.drawCircle(sx, sy, 12, TFT_CYAN);
     c.drawFastHLine(sx - 18, sy, 36, TFT_WHITE);
     c.drawFastVLine(sx, sy - 18, 36, TFT_WHITE);
     c.drawPixel(sx, sy, TFT_WHITE);
 
-    // Score
     c.setTextColor(TFT_YELLOW);
     c.setCursor(5, 5);
     c.printf("WARP: %d", score);

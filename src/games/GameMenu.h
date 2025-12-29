@@ -1,24 +1,27 @@
-#ifndef GAMEPADMODE_H
-#define GAMEPADMODE_H
+#ifndef GAMEMENU_H
+#define GAMEMENU_H
 
-#include "modes/Mode.h"
-#include "hal/Hardware.h"
+#include "Activity.h"
 #include "games/PongGame.h"
 #include "games/RacingGame.h"
 #include "games/SpaceShooterGame.h"
 #include "games/StarshipGame.h"
 #include "games/BalanceGame.h"
 
-class GamePadMode : public Mode {
+class GameMenu : public Activity {
 public:
-  explicit GamePadMode(TFTHandler& tft, Hardware& hw);
+  explicit GameMenu(TFTHandler& tft, Hardware& hw);
 
+  void init() override {} // Added to satisfy the pure virtual requirement
+  void draw() override {} // Added to satisfy the pure virtual requirement (Logic is in drawMenu)
   void enter() override;
   void update() override;
   void exit() override;
 
 private:
-  Hardware& hw;
+  unsigned long selectHoldStartTime = 0;
+  bool isHoldingSelect = false;
+  bool suppressNextRelease = false;
 
   // Game instances
   PongGame pongGame;

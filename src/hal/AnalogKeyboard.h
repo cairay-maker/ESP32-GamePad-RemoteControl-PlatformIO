@@ -6,12 +6,13 @@
 class AnalogKeyboard {
 public:
   explicit AnalogKeyboard(int pin);
-  String getCurrentKey();      // ← Returns current key or "NONE"
-  String getPressedKey();      // ← Returns key only on new press
+  String getCurrentKey();      
+  String getPressedKey();      
+  bool isKeyHeld(String keyName); // ← Add this to track duration
 
 private:
   int pin;
-  String lastKey = "NONE";     // For edge detection
+  String lastKey = "NONE";     
 };
 
 #endif

@@ -1,21 +1,25 @@
 #ifndef RACINGGAME_H
 #define RACINGGAME_H
 
-#include "hal/TFTHandler.h"
-#include "hal/Hardware.h"
+#include "Activity.h"
 
-class RacingGame {
+class RacingGame : public Activity {
 public:
   RacingGame(TFTHandler& tft, Hardware& hw);
-  void init();
-  void update();
-  void draw();
+  
+  // Added override keywords to satisfy the Activity base class
+  void init() override;
+  void update() override;
+  void draw() override;
+  
+  // Note: cleanup() and isRunning() are kept if needed by your menu, 
+  // but they are not part of the Activity interface.
   void cleanup();
   bool isRunning() const { return running; }
 
 private:
-  TFTHandler& tft;
-  Hardware& hw;
+  // REMOVED: TFTHandler& tft; <-- Inherited from Activity
+  // REMOVED: Hardware& hw;   <-- Inherited from Activity
 
   // Game States
   bool running = true;
@@ -32,7 +36,7 @@ private:
   int score = 0;
   unsigned long lastStrikeTime = 0;
 
-  // Obstacle Structure (The Farm Animals)
+  // Obstacle Structure
   struct Obstacle { 
     float x, z; 
     int type; // 0: Cow, 1: Pig, 2: Sheep

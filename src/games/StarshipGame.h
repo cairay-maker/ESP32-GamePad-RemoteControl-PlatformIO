@@ -1,21 +1,24 @@
 #ifndef STARSHIP_GAME_H
 #define STARSHIP_GAME_H
 
-#include "hal/TFTHandler.h"
-#include "hal/Hardware.h"
+#include "Activity.h" // Updated include
 
-class StarshipGame {
+class StarshipGame : public Activity { // Added inheritance
 public:
     StarshipGame(TFTHandler& tftRef, Hardware& hwRef);
-    void init();
-    void update();
-    void draw();
+    
+    // Added override keywords
+    void init() override;
+    void update() override;
+    void draw() override;
+    
     void cleanup();
     bool isRunning() const { return running; }
 
 private:
-    TFTHandler& tft;
-    Hardware& hw;
+    // REMOVED: TFTHandler& tft; <-- Inherited from Activity
+    // REMOVED: Hardware& hw;   <-- Inherited from Activity
+    
     bool running = true;
 
     struct Obstacle {
@@ -35,4 +38,5 @@ private:
     void spawnObstacle(int index);
     void endGame();
 };
+
 #endif

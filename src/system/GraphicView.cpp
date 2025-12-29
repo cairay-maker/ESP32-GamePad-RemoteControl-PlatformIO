@@ -1,4 +1,4 @@
-#include "modes/RemoteGraphicMode.h"
+#include "system/GraphicView.h"
 #include <Arduino.h>
 #include <math.h>
 
@@ -7,25 +7,24 @@ static const uint16_t JOYSTICK_COLOR = TFT_RED;
 static const uint16_t ENCODER_COLOR = 0xFC60;
 static const int RADIAL_POT_R = 12;
 
-RemoteGraphicMode::RemoteGraphicMode(TFTHandler& tftRef, Hardware& hwRef)
-  : Mode(tftRef), hw(hwRef) {}
+GraphicView::GraphicView(TFTHandler& tftRef, Hardware& hwRef)
+  : Activity(tftRef, hwRef) {} // FIXED: Pass both to Activity base class
 
-void RemoteGraphicMode::enter() {
-  // Just clear once; the canvas handles the rest in update
+void GraphicView::enter() {
   tft.clearScreen(); 
 }
 
-void RemoteGraphicMode::update() {
-  // 1. Reference the Global Canvas
+void GraphicView::update() {
+  // 1. Reference the Global Canvas (Inherited)
   TFT_eSprite& c = tft.canvas;
   
-  // 2. Clear the canvas (RAM) for the new frame
+  // 2. Clear the canvas RAM for the new frame
   c.fillSprite(TFT_BLACK);
 
   // 3. Draw Title
   tft.drawCenteredText("Remote Control Graphic", 8, TFT_CYAN, 1);
 
-  // 4. Draw Outlines (Self-healing is automatic now)
+  // 4. Draw Outlines
   c.drawRect(46, 61, 69, 30, TFT_CYAN); // IMU Rect
   c.drawRect(46, 94, 69, 33, TFT_RED);  // Keyboard Rect
 
@@ -33,16 +32,16 @@ void RemoteGraphicMode::update() {
   int btnX[] = {56, 82, 69, 69, 105}; 
   int btnY[] = {110, 110, 102, 118, 110};
   const char* bNames[] = {"LEFT", "RIGHT", "UP", "DOWN", "SELECT"};
-  String key = hw.keyboard.getCurrentKey(); 
+  String key = hw.keyboard.getCurrentKey(); // Using inherited 'hw'
 
   for(int i=0; i<5; i++) {
-    c.drawCircle(btnX[i], btnY[i], 6, TFT_YELLOW); // Outline
+    c.drawCircle(btnX[i], btnY[i], 6, TFT_YELLOW); 
     if (key == bNames[i]) {
-        c.fillCircle(btnX[i], btnY[i], 4, TFT_RED); // Press highlight
+        c.fillCircle(btnX[i], btnY[i], 4, TFT_RED); 
     }
   }
 
-  // 6. Radial Dials (Simplified: No more manual erasing)
+  // 6. Radial Dials
   auto drawRadial = [&](int cx, int cy, int r, float v, uint16_t color) {
     c.drawCircle(cx, cy, r, TFT_WHITE);
     float start = -M_PI_2;
@@ -67,17 +66,15 @@ void RemoteGraphicMode::update() {
   c.fillCircle(left_cx + (hw.state.joyLX * (j_r - 6)), j_cy - (hw.state.joyLY * (j_r - 6)), JOYSTICK_DOT, JOYSTICK_COLOR);
   c.fillCircle(right_cx + (hw.state.joyRX * (j_r - 6)), j_cy - (hw.state.joyRY * (j_r - 6)), JOYSTICK_DOT, JOYSTICK_COLOR);
 
-// 8. Encoders (3-pixel thick outline + Click Highlight)
+  // 8. Encoders
   auto drawEnc = [&](int cx, int cy, long val, bool isPressed, uint16_t color) {
-      // 1. Draw 3-pixel thick outline
       c.drawCircle(cx, cy, 13, color);
       c.drawCircle(cx, cy, 12, color);
       c.drawCircle(cx, cy, 11, color);
       
-      // 2. [NEW] If pressed, fill the center to highlight
       if (isPressed) {
           c.fillCircle(cx, cy, 10, TFT_RED); 
-          c.setTextColor(TFT_BLACK); // Invert text color so it's readable
+          c.setTextColor(TFT_BLACK); 
       } else {
           c.setTextColor(color);
       }
@@ -87,15 +84,13 @@ void RemoteGraphicMode::update() {
       c.drawCentreString(eb, cx, cy - 4, 1);
   };
 
-  // Assuming Encoder Left is bit 5 and Encoder Right is bit 6 in your button mask
-  // Adjust the (1 << bit) if your hardware mapping is different
   bool leftPressed  = (hw.state.buttons & (1 << 5)); 
   bool rightPressed = (hw.state.buttons & (1 << 6));
 
   drawEnc(23, 72, hw.state.encL, leftPressed, ENCODER_COLOR);
   drawEnc(136, 72, hw.state.encR, rightPressed, ENCODER_COLOR);
 
-  // 9. IMU Ball
+  // 9. IMU Ball (Tilt Visualization)
   const int imu_cx = 80, imu_cy = 76, imu_r = 10;
   int ballX = imu_cx + (int)(-(constrain(hw.state.ax, -4.0, 4.0)/4.0) * (imu_r - 2));
   int ballY = imu_cy + (int)(-(constrain(hw.state.ay, -2.0, 2.0)/2.0) * (imu_r - 2));
@@ -103,8 +98,8 @@ void RemoteGraphicMode::update() {
   c.drawCircle(imu_cx, imu_cy, imu_r, TFT_WHITE);
   c.fillCircle(ballX, ballY, 3, TFT_YELLOW);
 
-  // 10. [CRITICAL] Push the finished canvas to the display
+  // 10. Push the finished canvas to the display
   tft.updateDisplay();
 }
 
-void RemoteGraphicMode::exit() {}
+void GraphicView::exit() {}

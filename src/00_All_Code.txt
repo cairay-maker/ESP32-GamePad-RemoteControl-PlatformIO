@@ -18,15 +18,15 @@ private:
 #endif
 
 
-===== GamePadMode.h =====
-#ifndef GAMEPADMODE_H
-#define GAMEPADMODE_H
+===== GameMenu.h =====
+#ifndef GameMenu_H
+#define GameMenu_H
 
-#include "Mode.h"
+#include "Activity.h"
 
-class GamePadMode : public Mode {
+class GameMenu : public Activity {
 public:
-  explicit GamePadMode(TFTHandler& tft) : Mode(tft) {}
+  explicit GameMenu(TFTHandler& tft) : Mode(tft) {}
   void enter() override;
   void update() override;
   void exit() override;
@@ -194,10 +194,10 @@ private:
 #ifndef REMOTECONTROLMODE_H
 #define REMOTECONTROLMODE_H
 
-#include "Mode.h"
+#include "Activity.h"
 #include "Hardware.h"
 
-class RemoteControlMode : public Mode {
+class RemoteControlMode : public Activity {
 public:
   // Constructor takes TFT reference and shared hardware
   explicit RemoteControlMode(TFTHandler& tft, Hardware& hw);
@@ -237,16 +237,16 @@ private:
 #endif
 
 
-===== RemoteGraphicMode.h =====
-#ifndef REMOTEGRAPHICMODE_H
-#define REMOTEGRAPHICMODE_H
+===== GraphicView.h =====
+#ifndef GraphicView_H
+#define GraphicView_H
 
-#include "Mode.h"
+#include "Activity.h"
 #include "Hardware.h"
 
-class RemoteGraphicMode : public Mode {
+class GraphicView : public Activity {
 public:
-  explicit RemoteGraphicMode(TFTHandler& tft, Hardware& hw);
+  explicit GraphicView(TFTHandler& tft, Hardware& hw);
   void enter() override;
   void update() override;
   void exit() override;
@@ -365,19 +365,19 @@ String AnalogKeyboard::getPressedKey() {
 }
 
 
-===== GamePadMode.cpp =====
-#include "GamePadMode.h"
+===== GameMenu.cpp =====
+#include "GameMenu.h"
 
-void GamePadMode::enter() {
+void GameMenu::enter() {
   tft.clearScreen();
   tft.drawCenteredText("Game Pad", 60, TFT_GREEN, 3);
 }
 
-void GamePadMode::update() {
+void GameMenu::update() {
   // Future: joystick, buttons, etc.
 }
 
-void GamePadMode::exit() {
+void GameMenu::exit() {
   // Cleanup if needed
 }
 
@@ -468,9 +468,9 @@ void Joystick::update() {
 #include <Arduino.h>
 #include "TFTHandler.h"
 #include "ToggleSwitch.h"
-#include "GamePadMode.h"
+#include "GameMenu.h"
 #include "RemoteControlMode.h"
-#include "RemoteGraphicMode.h"
+#include "GraphicView.h"
 
 #define SWITCH_1_PIN 19  // Primary switch (e.g., master power / mode selector)
 #define SWITCH_2_PIN 25  // Secondary switch (for future sub-modes or options)
@@ -488,9 +488,9 @@ bool Switch1On = false;   // Current state of Switch1
 bool Switch2On = false;   // Current state of Switch2
 
 // Modes
-GamePadMode gamePadMode(tft);
+GameMenu GameMenu(tft);
 RemoteControlMode remoteControlMode(tft, hw);
-RemoteGraphicMode remoteGraphicMode(tft, hw);
+GraphicView GraphicView(tft, hw);
 
 // Current active mode
 Mode* currentMode = nullptr;
@@ -520,17 +520,17 @@ void loop() {
   Switch2On = Switch2.isOn();
 
   // === Mode switching ===
-  if (Switch1On && currentMode != &gamePadMode) {
+  if (Switch1On && currentMode != &GameMenu) {
     if (currentMode) currentMode->exit();
-    currentMode = &gamePadMode;
+    currentMode = &GameMenu;
     currentMode->enter();
   }
   else if (!Switch1On) {
     // When Switch1 is OFF we can choose between RemoteControl text mode
     // and the new graphical joystick mode using Switch2.
-    if (Switch2On && currentMode != &remoteGraphicMode) {
+    if (Switch2On && currentMode != &GraphicView) {
       if (currentMode) currentMode->exit();
-      currentMode = &remoteGraphicMode;
+      currentMode = &GraphicView;
       currentMode->enter();
     } else if (!Switch2On && currentMode != &remoteControlMode) {
       if (currentMode) currentMode->exit();
@@ -646,7 +646,7 @@ extern bool Switch1On;
 extern bool Switch2On;
 
 RemoteControlMode::RemoteControlMode(TFTHandler& tftRef, Hardware& hw)
-    : Mode(tftRef),
+    : Activity(tftRef),
       joyRight(hw.joyRight), joyLeft(hw.joyLeft), keyboard(hw.keyboard),
       encoderRight(hw.encoderRight), encoderLeft(hw.encoderLeft),
       potRight(hw.potRight), potMid(hw.potMid), potLeft(hw.potLeft), imu(hw.imu)
@@ -838,8 +838,8 @@ void RemoteControlMode::exit() {
 }
 
 
-===== RemoteGraphicMode.cpp =====
-#include "RemoteGraphicMode.h"
+===== GraphicView.cpp =====
+#include "GraphicView.h"
 #include <Arduino.h>
 #include <math.h>
 
@@ -849,15 +849,15 @@ static const uint16_t ENCODER_COLOR = 0xFC60; // reddish-orange (RGB565)
 static const int RADIAL_POT_R = 12; // outer radius for radial encoders
 static const int RADIAL_STEPS = 16; // map ±16 counts -> ±1.0
 
-RemoteGraphicMode::RemoteGraphicMode(TFTHandler& tftRef, Hardware& hw)
-  : Mode(tftRef),
+GraphicView::GraphicView(TFTHandler& tftRef, Hardware& hw)
+  : Activity(tftRef),
     joyRight(hw.joyRight), joyLeft(hw.joyLeft), keyboard(hw.keyboard),
     encoderRight(hw.encoderRight), encoderLeft(hw.encoderLeft), encoderMiddle(hw.encoderMiddle),
     potLeft(hw.potLeft), potMid(hw.potMid), potRight(hw.potRight), imu(hw.imu)
 {
 }
 
-void RemoteGraphicMode::enter() {
+void GraphicView::enter() {
   tft.clearScreen();
   tft.drawCenteredText("Remote Graphic", 8, TFT_CYAN, 1);
   // Draw static circles for left and right joysticks at fixed coordinates
@@ -977,7 +977,7 @@ void RemoteGraphicMode::enter() {
   disp.drawLine(rPotR_x, rPot_y, rPotR_x, rPot_y - RADIAL_POT_R, TFT_BLUE);
 }
 
-void RemoteGraphicMode::update() {
+void GraphicView::update() {
   // Update both joysticks
   joyLeft.update();
   joyRight.update();
@@ -1248,7 +1248,7 @@ void RemoteGraphicMode::update() {
   delay(30);
 }
 
-void RemoteGraphicMode::exit() {
+void GraphicView::exit() {
   // nothing special
 }
 
@@ -1369,12 +1369,12 @@ private:
 #ifndef BALANCE_GAME_H
 #define BALANCE_GAME_H
 
-#include "Mode.h"
+#include "Activity.h"
 #include "Hardware.h"
 #include <TFT_eSPI.h>
 #include <utility> 
 
-class BalanceGame : public Mode {
+class BalanceGame : public Activity {
 public:
     BalanceGame(TFTHandler& tftRef, Hardware& hwRef);
     
@@ -1421,11 +1421,11 @@ private:
 #endif
 
 
-===== GamePadMode.h =====
-#ifndef GAMEPADMODE_H
-#define GAMEPADMODE_H
+===== GameMenu.h =====
+#ifndef GameMenu_H
+#define GameMenu_H
 
-#include "Mode.h"
+#include "Activity.h"
 #include "Hardware.h"
 #include "PongGame.h"
 #include "RacingGame.h"
@@ -1433,9 +1433,9 @@ private:
 #include "StarshipGame.h"
 #include "BalanceGame.h"
 
-class GamePadMode : public Mode {
+class GameMenu : public Activity {
 public:
-  explicit GamePadMode(TFTHandler& tft, Hardware& hw);
+  explicit GameMenu(TFTHandler& tft, Hardware& hw);
 
   void enter() override;
   void update() override;
@@ -1495,16 +1495,16 @@ struct Hardware {
 
 
 
-===== IMUControlMode.h =====
-#ifndef IMUCONTROLMODE_H
-#define IMUCONTROLMODE_H
+===== Axis3DView.h =====
+#ifndef Axis3DView_H
+#define Axis3DView_H
 
-#include "Mode.h"
+#include "Activity.h"
 #include "Hardware.h"
 
-class IMUControlMode : public Mode {
+class Axis3DView : public Activity {
 public:
-    explicit IMUControlMode(TFTHandler& tft, Hardware& hw);
+    explicit Axis3DView(TFTHandler& tft, Hardware& hw);
 
     void enter() override;
     void update() override; // One function to rule them all
@@ -1784,10 +1784,10 @@ private:
 #ifndef REMOTECONTROLMODE_H
 #define REMOTECONTROLMODE_H
 
-#include "Mode.h"
+#include "Activity.h"
 #include "Hardware.h"
 
-class RemoteControlMode : public Mode {
+class RemoteControlMode : public Activity {
 public:
   // Constructor takes TFT reference and shared hardware
   explicit RemoteControlMode(TFTHandler& tft, Hardware& hw);
@@ -1827,16 +1827,16 @@ private:
 #endif
 
 
-===== RemoteGraphicMode.h =====
-#ifndef REMOTEGRAPHICMODE_H
-#define REMOTEGRAPHICMODE_H
+===== GraphicView.h =====
+#ifndef GraphicView_H
+#define GraphicView_H
 
-#include "Mode.h"
+#include "Activity.h"
 #include "Hardware.h"
 
-class RemoteGraphicMode : public Mode {
+class GraphicView : public Activity {
 public:
-  explicit RemoteGraphicMode(TFTHandler& tft, Hardware& hw);
+  explicit GraphicView(TFTHandler& tft, Hardware& hw);
   void enter() override;
   void update() override;
   void exit() override;
@@ -1944,17 +1944,17 @@ private:
 #ifndef STARSHIP_GAME_H
 #define STARSHIP_GAME_H
 
-#include "Mode.h"
+#include "Activity.h"
 #include "Hardware.h"
 #include <TFT_eSPI.h>
 
-class StarshipGame : public Mode {
+class StarshipGame : public Activity {
 public:
     StarshipGame(TFTHandler& tftRef, Hardware& hwRef);
     void init();
     void cleanup();
     
-    // Add these for GamePadMode compatibility
+    // Add these for GameMenu compatibility
     void draw() {}             // Does nothing because update() handles it
     bool isRunning() { return true; } // Always returns true for now
 
@@ -2061,7 +2061,7 @@ static const int CENTER_X = 70;
 static const int CENTER_Y = 60; 
 
 BalanceGame::BalanceGame(TFTHandler& tftRef, Hardware& hwRef)
-    : Mode(tftRef), hw(hwRef), sprite(&tftRef.getTFT()) {}
+    : Activity(tftRef), hw(hwRef), sprite(&tftRef.getTFT()) {}
 
 void BalanceGame::init() {
     if (!sprite.created()) sprite.createSprite(FRAME_W, FRAME_H);
@@ -2197,12 +2197,12 @@ void BalanceGame::exit() { cleanup(); }
 void BalanceGame::cleanup() { if (sprite.created()) sprite.deleteSprite(); }
 
 
-===== GamePadMode.cpp =====
-#include "GamePadMode.h"
+===== GameMenu.cpp =====
+#include "GameMenu.h"
 #include <Arduino.h>
 
-GamePadMode::GamePadMode(TFTHandler& tftRef, Hardware& hwRef)
-    : Mode(tftRef),
+GameMenu::GameMenu(TFTHandler& tftRef, Hardware& hwRef)
+    : Activity(tftRef),
       hw(hwRef),
       pongGame(tftRef, hwRef),
       racingGame(tftRef, hwRef),
@@ -2212,13 +2212,13 @@ GamePadMode::GamePadMode(TFTHandler& tftRef, Hardware& hwRef)
 {
 }
 
-void GamePadMode::enter() {
+void GameMenu::enter() {
   currentGame = MENU;
   selectedGame = 0;
   drawMenu(); 
 }
 
-void GamePadMode::drawMenu() {
+void GameMenu::drawMenu() {
   tft.clearScreen();
   tft.drawCenteredText("Game Pad Mode", 8, TFT_CYAN, 1);
 
@@ -2239,7 +2239,7 @@ void GamePadMode::drawMenu() {
   tft.drawCenteredText("SELECT: Play/Exit", 115, TFT_ORANGE, 1);
 }
 
-void GamePadMode::startGame(int index) {
+void GameMenu::startGame(int index) {
   // 1. Clear the WHOLE screen to remove menu text and orange instructions
   tft.clearScreen();
   
@@ -2270,7 +2270,7 @@ void GamePadMode::startGame(int index) {
   }
 }
 
-void GamePadMode::update() {
+void GameMenu::update() {
   // 1. Check physical hardware state
   String pressed = hw.keyboard.getPressedKey();
 
@@ -2334,8 +2334,8 @@ void GamePadMode::update() {
   }
 }
 
-void GamePadMode::exit() {
-  // Ensure all RAM is freed when leaving GamePadMode entirely
+void GameMenu::exit() {
+  // Ensure all RAM is freed when leaving GameMenu entirely
   balanceGame.cleanup();
   spaceShooterGame.cleanup();
   starshipGame.cleanup();
@@ -2344,8 +2344,8 @@ void GamePadMode::exit() {
 }
 
 
-===== IMUControlMode.cpp =====
-#include "IMUControlMode.h"
+===== Axis3DView.cpp =====
+#include "Axis3DView.h"
 #include <Arduino.h>
 
 static const int FRAME_W = 140;
@@ -2353,10 +2353,10 @@ static const int FRAME_H = 80;
 static const int FRAME_X = 10; 
 static const int FRAME_Y = 25;                 
 
-IMUControlMode::IMUControlMode(TFTHandler& tftRef, Hardware& hwRef)
-    : Mode(tftRef), hw(hwRef), sprite(&tftRef.getTFT()) {}
+Axis3DView::Axis3DView(TFTHandler& tftRef, Hardware& hwRef)
+    : Activity(tftRef), hw(hwRef), sprite(&tftRef.getTFT()) {}
 
-void IMUControlMode::enter() {
+void Axis3DView::enter() {
     tft.clearScreen();
     tft.drawCenteredText("IMU 3D ISOMETRIC AXIS", 8, TFT_CYAN, 1);
     tft.drawCenteredText("Press Select to Calibrate", 115, TFT_LIGHTGREY, 1);
@@ -2365,7 +2365,7 @@ void IMUControlMode::enter() {
     if (!sprite.created()) sprite.createSprite(FRAME_W, FRAME_H);
 }
 
-void IMUControlMode::update() {
+void Axis3DView::update() {
     if (hw.keyboard.getPressedKey() == "SELECT") hw.imu.calibrate();
 
     hw.imu.update();
@@ -2436,7 +2436,7 @@ void IMUControlMode::update() {
     sprite.pushSprite(FRAME_X, FRAME_Y);
 }
 
-void IMUControlMode::exit() {
+void Axis3DView::exit() {
     if (sprite.created()) sprite.deleteSprite();
 }
 
@@ -2577,10 +2577,10 @@ void Joystick::update() {
 #include <Arduino.h>
 #include "TFTHandler.h"
 #include "ToggleSwitch.h"
-#include "GamePadMode.h"
-#include "IMUControlMode.h"
+#include "GameMenu.h"
+#include "Axis3DView.h"
 #include "RemoteControlMode.h"
-#include "RemoteGraphicMode.h"
+#include "GraphicView.h"
 
 #define SWITCH_1_PIN 19  // Primary switch (e.g., master power / mode selector)
 #define SWITCH_2_PIN 25  // Secondary switch (for future sub-modes or options)
@@ -2598,10 +2598,10 @@ bool Switch1On = false;   // Current state of Switch1
 bool Switch2On = false;   // Current state of Switch2
 
 // Modes
-GamePadMode gamePadMode(tft, hw);           // Switch1 On + Switch2 On
-IMUControlMode imuControlMode(tft, hw);     // Switch1 On + Switch2 Off (placeholder)
+GameMenu GameMenu(tft, hw);           // Switch1 On + Switch2 On
+Axis3DView Axis3DView(tft, hw);     // Switch1 On + Switch2 Off (placeholder)
 RemoteControlMode remoteControlMode(tft, hw);
-RemoteGraphicMode remoteGraphicMode(tft, hw);
+GraphicView GraphicView(tft, hw);
 
 // Current active mode
 Mode* currentMode = nullptr;
@@ -2634,11 +2634,11 @@ void loop() {
   if (!Switch1On && !Switch2On) {
     newMode = &remoteControlMode;
   } else if (!Switch1On && Switch2On) {
-    newMode = &remoteGraphicMode;
+    newMode = &GraphicView;
   } else if (Switch1On && !Switch2On) {
-    newMode = &imuControlMode; // "IMU Control Mode" 
+    newMode = &Axis3DView; // "IMU Control Mode" 
   } else if (Switch1On && Switch2On) {
-    newMode = &gamePadMode;   // Full game menu
+    newMode = &GameMenu;   // Full game menu
   }
 
   if (newMode != currentMode) {
@@ -3129,7 +3129,7 @@ extern bool Switch1On;
 extern bool Switch2On;
 
 RemoteControlMode::RemoteControlMode(TFTHandler& tftRef, Hardware& hw)
-    : Mode(tftRef),
+    : Activity(tftRef),
       joyRight(hw.joyRight), joyLeft(hw.joyLeft), keyboard(hw.keyboard),
       encoderRight(hw.encoderRight), encoderLeft(hw.encoderLeft),
       potRight(hw.potRight), potMid(hw.potMid), potLeft(hw.potLeft), imu(hw.imu)
@@ -3321,8 +3321,8 @@ void RemoteControlMode::exit() {
 }
 
 
-===== RemoteGraphicMode.cpp =====
-#include "RemoteGraphicMode.h"
+===== GraphicView.cpp =====
+#include "GraphicView.h"
 #include <Arduino.h>
 #include <math.h>
 
@@ -3332,15 +3332,15 @@ static const uint16_t ENCODER_COLOR = 0xFC60; // reddish-orange (RGB565)
 static const int RADIAL_POT_R = 12; // outer radius for radial encoders
 static const int RADIAL_STEPS = 16; // map ±16 counts -> ±1.0
 
-RemoteGraphicMode::RemoteGraphicMode(TFTHandler& tftRef, Hardware& hw)
-  : Mode(tftRef),
+GraphicView::GraphicView(TFTHandler& tftRef, Hardware& hw)
+  : Activity(tftRef),
     joyRight(hw.joyRight), joyLeft(hw.joyLeft), keyboard(hw.keyboard),
     encoderRight(hw.encoderRight), encoderLeft(hw.encoderLeft), encoderMiddle(hw.encoderMiddle),
     potLeft(hw.potLeft), potMid(hw.potMid), potRight(hw.potRight), imu(hw.imu)
 {
 }
 
-void RemoteGraphicMode::enter() {
+void GraphicView::enter() {
   tft.clearScreen();
   tft.drawCenteredText("Remote Control Graphic", 8, TFT_CYAN, 1);
   // Draw static circles for left and right joysticks at fixed coordinates
@@ -3460,7 +3460,7 @@ void RemoteGraphicMode::enter() {
   disp.drawLine(rPotR_x, rPot_y, rPotR_x, rPot_y - RADIAL_POT_R, TFT_BLUE);
 }
 
-void RemoteGraphicMode::update() {
+void GraphicView::update() {
   // Update both joysticks
   joyLeft.update();
   joyRight.update();
@@ -3731,7 +3731,7 @@ void RemoteGraphicMode::update() {
   delay(30);
 }
 
-void RemoteGraphicMode::exit() {
+void GraphicView::exit() {
   // nothing special
 }
 
@@ -3914,7 +3914,7 @@ static const int FRAME_X = 10;
 static const int FRAME_Y = 25;
 
 StarshipGame::StarshipGame(TFTHandler& tftRef, Hardware& hwRef)
-    : Mode(tftRef), hw(hwRef), sprite(&tftRef.getTFT()) {}
+    : Activity(tftRef), hw(hwRef), sprite(&tftRef.getTFT()) {}
 
 void StarshipGame::init() {
     if (!sprite.created()) {

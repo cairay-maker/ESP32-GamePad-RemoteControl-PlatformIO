@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 RacingGame::RacingGame(TFTHandler& tftRef, Hardware& hwRef) 
-    : tft(tftRef), hw(hwRef) {}
+    : Activity(tftRef, hwRef) {} // Correctly passes both to Activity
 
 void RacingGame::init() {
   running = true;
@@ -29,14 +29,13 @@ void RacingGame::spawnObstacle() {
 
 void RacingGame::update() {
   if (gameOver) {
+    // Uses 'hw' inherited from Activity
     if (hw.state.buttons & (1 << 4)) init(); 
     return;
   }
 
-  // Steering: Right Joystick X
   playerX = constrain(playerX + (hw.state.joyRX * 0.12f), -1.0f, 1.0f);
 
-  // Speed & Boost
   float boost = hw.state.joyRY; 
   currentSpeed = baseSpeed + (boost > 0.1f ? boost * 3.0f : 0);
   trackPos += currentSpeed;
@@ -67,6 +66,7 @@ void RacingGame::update() {
 }
 
 void RacingGame::draw() {
+  // Uses 'tft' inherited from Activity
   TFT_eSprite& c = tft.canvas;
   
   int shakeX = 0, shakeY = 0;
@@ -77,7 +77,6 @@ void RacingGame::draw() {
 
   c.fillRect(0, 0, 160, 64, 0x3CFD); // Sky
 
-  // Draw Ground & Road
   for (int y = 0; y < 64; y++) {
     float p = (float)y / 64.0f;
     float w = 30 + (p * 110); 
@@ -91,7 +90,6 @@ void RacingGame::draw() {
     c.drawPixel(roadX + w/2, screenY, TFT_WHITE);
   }
 
-  // Draw Animals
   for(int i=0; i<MAX_OBSTACLES; i++) {
     if(obstacles[i].active) {
       float p = (100.0f - obstacles[i].z) / 100.0f; 
@@ -104,7 +102,6 @@ void RacingGame::draw() {
     }
   }
 
-  // RED Explosive Effect
   if (millis() - lastStrikeTime < 600) {
       for(int p=0; p<15; p++) {
           c.fillCircle(80 + (playerX * 60) + random(-20, 21), 105 + random(-15, 10), random(1, 5), TFT_RED);
@@ -113,14 +110,13 @@ void RacingGame::draw() {
 
   drawCar(c, 80 + (playerX * 60) + shakeX, 115 + shakeY);
   
-  // HUD
   c.setTextColor(TFT_YELLOW);
   c.setTextSize(1);
   c.setCursor(5, 5);
   c.printf("SCORE: %d", score);
   
   for(int i=0; i<(3-strikes); i++) {
-      c.fillCircle(150 - (i*12), 10, 4, 0xF800); // Red lives
+      c.fillCircle(150 - (i*12), 10, 4, 0xF800); 
   }
 
   if (gameOver) {
@@ -135,22 +131,13 @@ void RacingGame::draw() {
   }
 }
 
-// Sleek Sporty Racing Car (Narrow Front)
 void RacingGame::drawCar(TFT_eSprite& c, int x, int y) {
-  // Main chassis (Triangle shape for narrow front)
-  // x is the center of the car
   c.fillTriangle(x, y - 20, x - 15, y, x + 15, y, TFT_ORANGE);
-  
-  // Cockpit/Windshield
   c.fillTriangle(x, y - 12, x - 8, y - 2, x + 8, y - 2, 0x7BEF);
-  
-  // Rear Spoiler
-  c.drawFastHLine(x - 15, y, 30, 0x8000); // Darker orange/red base
+  c.drawFastHLine(x - 15, y, 30, 0x8000); 
   c.fillRect(x - 16, y - 4, 4, 6, TFT_ORANGE);
   c.fillRect(x + 12, y - 4, 4, 6, TFT_ORANGE);
   c.drawFastHLine(x - 16, y - 4, 32, TFT_ORANGE);
-
-  // Wheels (Hidden under body mostly)
   c.fillRect(x - 17, y - 10, 4, 8, TFT_BLACK);
   c.fillRect(x + 13, y - 10, 4, 8, TFT_BLACK);
 }
