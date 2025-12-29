@@ -1,13 +1,13 @@
 #ifndef GAMEPADMODE_H
 #define GAMEPADMODE_H
 
-#include "Mode.h"
-#include "Hardware.h"
-#include "PongGame.h"
-#include "RacingGame.h"
-#include "SpaceShooterGame.h"
-#include "StarshipGame.h"
-#include "BalanceGame.h"
+#include "modes/Mode.h"
+#include "hal/Hardware.h"
+#include "games/PongGame.h"
+#include "games/RacingGame.h"
+#include "games/SpaceShooterGame.h"
+#include "games/StarshipGame.h"
+#include "games/BalanceGame.h"
 
 class GamePadMode : public Mode {
 public:
@@ -27,7 +27,6 @@ private:
   StarshipGame starshipGame;
   BalanceGame balanceGame;
 
-  // Menu state
   enum GameState { MENU, BALANCE, SHOOTER, STARSHIP, RACING, PONG };
   GameState currentGame = MENU;
 

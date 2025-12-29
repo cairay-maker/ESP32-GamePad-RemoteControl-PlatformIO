@@ -1,8 +1,8 @@
 #ifndef BALANCE_GAME_H
 #define BALANCE_GAME_H
 
-#include "Mode.h"
-#include "Hardware.h"
+#include "modes/Mode.h"
+#include "hal/Hardware.h"
 #include <TFT_eSPI.h>
 #include <utility> 
 
@@ -21,7 +21,6 @@ public:
 
 private:
     Hardware& hw;
-    TFT_eSprite sprite;
 
     // Simulation Variables - Beam 1
     float ballX, ballVelocity, beamAngle;      

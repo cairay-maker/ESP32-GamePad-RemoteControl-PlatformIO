@@ -1,7 +1,7 @@
 #ifndef MODE_H
 #define MODE_H
 
-#include "TFTHandler.h"
+#include "hal/TFTHandler.h"
 
 class Mode {
 public:

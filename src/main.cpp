@@ -1,79 +1,88 @@
 #include <Arduino.h>
-#include "TFTHandler.h"
-#include "ToggleSwitch.h"
-#include "GamePadMode.h"
-#include "IMUControlMode.h"
-#include "RemoteControlMode.h"
-#include "RemoteGraphicMode.h"
-
-#define SWITCH_1_PIN 19  // Primary switch (e.g., master power / mode selector)
-#define SWITCH_2_PIN 25  // Secondary switch (for future sub-modes or options)
+#include "hal/Hardware.h"   // [CHANGE] Hardware now includes ToggleSwitch.h internally
+#include "hal/TFTHandler.h"
+#include "modes/GamePadMode.h"
+#include "modes/IMUControlMode.h"
+#include "modes/RemoteTextMode.h"
+#include "modes/RemoteGraphicMode.h"
 
 // Global objects
 TFTHandler tft;
-ToggleSwitch Switch1(SWITCH_1_PIN);  // Switch1 - Main control
-ToggleSwitch Switch2(SWITCH_2_PIN);  // Switch2 - Secondary control
+Hardware hw; // [CHANGE] hw now owns Switch1 (19) and Switch2 (25) internally
 
-// Shared hardware objects (joysticks, pots, encoders, IMU)
-Hardware hw;
-
-// === Global switch states – accessible from any mode ===
-bool Switch1On = false;   // Current state of Switch1
-bool Switch2On = false;   // Current state of Switch2
-
-// Modes
-GamePadMode gamePadMode(tft, hw);           // Switch1 On + Switch2 On
-IMUControlMode imuControlMode(tft, hw);     // Switch1 On + Switch2 Off (placeholder)
-RemoteControlMode remoteControlMode(tft, hw);
+// Modes - References the same 'hw' instance for data
+GamePadMode gamePadMode(tft, hw);           
+IMUControlMode imuControlMode(tft, hw);     
+RemoteTextMode remoteTextMode(tft, hw);
 RemoteGraphicMode remoteGraphicMode(tft, hw);
 
-// Current active mode
+// Current active mode tracking
 Mode* currentMode = nullptr;
+uint8_t currentModeId = 0;
 
 void setup() {
   Serial.begin(115200);
-  delay(2000);  // Critical boot delay for stability
+  delay(2000); 
 
   Serial.println("\n=== ESP32 Dual Switch Controller ===");
-  Serial.println("Switch1 (Pin 19): Primary Mode");
-  Serial.println("Switch2 (Pin 25): Secondary / Future Options");
-  Serial.println("Current: Switch1 OFF → Remote Control Mode");
-  Serial.println("         Switch1 ON  → Game Pad Mode");
-  Serial.println("Started - Dec 25, 2025");
+  Serial.println("System: Unified HAL & ControllerState Enabled");
+  Serial.println("Started - Dec 28, 2025");
 
   tft.begin();
   delay(500);
 
-  // Default to Remote Control mode
-  currentMode = &remoteControlMode;
+  // Initial mode check based on physical switch positions at boot
+  bool s1 = hw.Switch1.isOn();
+  bool s2 = hw.Switch2.isOn();
+  
+  // Logical Mode Mapping
+  if (!s1 && !s2)      { currentMode = &remoteTextMode; currentModeId = 3; }
+  else if (!s1 && s2) { currentMode = &remoteGraphicMode; currentModeId = 2; }
+  else if (s1 && !s2) { currentMode = &imuControlMode;    currentModeId = 4; }
+  else                { currentMode = &gamePadMode;       currentModeId = 1; }
+
   currentMode->enter();
 }
 
 void loop() {
-  Switch1On = Switch1.isOn();
-  Switch2On = Switch2.isOn();
+  // 1. [CHANGE] Determine mode based on internal hardware switch states
+  bool s1 = hw.Switch1.isOn();
+  bool s2 = hw.Switch2.isOn();
 
-  Mode* newMode = nullptr;
+  Mode* nextMode = nullptr;
+  uint8_t nextModeId = 0;
 
-  if (!Switch1On && !Switch2On) {
-    newMode = &remoteControlMode;
-  } else if (!Switch1On && Switch2On) {
-    newMode = &remoteGraphicMode;
-  } else if (Switch1On && !Switch2On) {
-    newMode = &imuControlMode; // "IMU Control Mode" 
-  } else if (Switch1On && Switch2On) {
-    newMode = &gamePadMode;   // Full game menu
+  if (!s1 && !s2) {
+    nextMode = &remoteTextMode;
+    nextModeId = 3;
+  } else if (!s1 && s2) {
+    nextMode = &remoteGraphicMode;
+    nextModeId = 2;
+  } else if (s1 && !s2) {
+    nextMode = &imuControlMode;
+    nextModeId = 4;
+  } else {
+    nextMode = &gamePadMode;
+    nextModeId = 1;
   }
 
-  if (newMode != currentMode) {
+  // 2. Handle Mode Transitions
+  if (nextMode != currentMode) {
     if (currentMode) currentMode->exit();
-    currentMode = newMode;
+    currentMode = nextMode;
+    currentModeId = nextModeId;
     currentMode->enter();
   }
 
+  // 3. [CHANGE] Global Sync: Refresh all sensors and bit-pack switches into state
+  // This populates hw.state for use inside the currentMode->update()
+  hw.readAll(currentModeId);
+
+  // 4. Update the active mode (Modes now draw from hw.state)
   if (currentMode) {
     currentMode->update();
   }
 
+  // Small delay for OS stability and power management
   delay(10);
 }
