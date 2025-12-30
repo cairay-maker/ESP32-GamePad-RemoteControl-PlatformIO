@@ -19,7 +19,7 @@ void Axis3DView::update() {
     TFT_eSprite& c = tft.canvas; // Inherited from Activity
     c.fillSprite(TFT_BLACK);
 
-    tft.drawCenteredText("IMU 3D ISOMETRIC AXIS", 8, TFT_CYAN, 1);
+    tft.drawCenteredText("AXIS 3D VIEW - IMU", 8, TFT_CYAN, 1);
     tft.drawCenteredText("Press Select to Calibrate", 115, TFT_LIGHTGREY, 1);
     
     c.drawRect(FRAME_X - 1, FRAME_Y - 1, FRAME_W + 2, FRAME_H + 2, 0x7BEF);

@@ -1,5 +1,6 @@
 #include "system/SystemMenu.h"
 #include <Arduino.h>
+#include <WiFi.h>
 
 SystemMenu::SystemMenu(TFTHandler& tftRef, Hardware& hwRef)
     : Activity(tftRef, hwRef),
@@ -13,13 +14,30 @@ void SystemMenu::enter() {
   selectedApp = 0;
   isHoldingSelect = false;
   suppressNextRelease = false;
+  
+  // Initialize tracker with current WiFi state
+  lastWifiState = (WiFi.getMode() != WIFI_OFF);
   drawMenu(); 
 }
 
 void SystemMenu::drawMenu() {
   tft.canvas.fillSprite(TFT_BLACK);
+  
+  // --- WiFi Status Icon (Top Right) ---
+  bool wifiOn = (WiFi.getMode() != WIFI_OFF);
+  int x = 148, y = 4;
+  uint16_t color = wifiOn ? TFT_GREEN : TFT_DARKGREY;
+  
+  // Draw 3 signal bars of increasing height
+  tft.canvas.fillRect(x,     y + 4, 2, 2, color); 
+  tft.canvas.fillRect(x + 3, y + 2, 2, 4, color); 
+  tft.canvas.fillRect(x + 6, y,     2, 6, color); 
+  
+  lastWifiState = wifiOn; // Update tracker to current state
+
   tft.drawCenteredText("SYSTEM MENU", 8, TFT_CYAN, 1);
 
+  // Draw App List
   for (int i = 0; i < numApps; i++) {
     int y = 25 + i * 15;
     if (i == selectedApp) {
@@ -41,45 +59,55 @@ void SystemMenu::drawMenu() {
 void SystemMenu::startApp(int index) {
   tft.canvas.fillSprite(TFT_BLACK);
   tft.updateDisplay();
+  
   if (index == 0)      { currentState = AXIS;    axis3DView.enter(); }
   else if (index == 1) { currentState = DATA;    dataView.enter(); }
   else if (index == 2) { currentState = GRAPHIC; graphicView.enter(); }
 }
 
 void SystemMenu::update() {
-  bool selectDown = hw.keyboard.isKeyHeld("SELECT");
+  // 1. Live WiFi Refresh (Detects Switch 2 change from main loop)
+  bool currentWifi = (WiFi.getMode() != WIFI_OFF);
+  if (currentWifi != lastWifiState && currentState == MENU) {
+    drawMenu(); 
+  }
+
+  // 2. Capture hardware state ONCE to prevent noise/skipping
+  String currentKey = hw.keyboard.getCurrentKey(); 
   unsigned long now = millis();
 
-  // --- Logic Timer ---
-  if (selectDown) {
+  // 3. Select Button Logic (Short Press to Enter / Long Press to Exit)
+  if (currentKey == "SELECT") {
     if (!isHoldingSelect) {
       isHoldingSelect = true;
       selectHoldStartTime = now;
       suppressNextRelease = false;
-    } else if (now - selectHoldStartTime >= 1000 && !suppressNextRelease) {
+    } else if (!suppressNextRelease && (now - selectHoldStartTime >= 1000)) {
+      // Trigger Exit on Long Press
       if (currentState != MENU) {
         currentState = MENU;
         suppressNextRelease = true; 
         drawMenu();
-        return;
+        return; 
       }
     }
   } else {
+    // Release detection
     if (isHoldingSelect) {
-      isHoldingSelect = false;
       if (!suppressNextRelease && currentState == MENU) {
+        // Trigger Launch on Short Press
         if (now - selectHoldStartTime < 1000) {
           startApp(selectedApp);
-          return;
         }
       }
+      isHoldingSelect = false;
       suppressNextRelease = false;
     }
   }
 
-  // --- Menu Nav ---
+  // 4. Menu Navigation (Only active when in MENU state)
   if (currentState == MENU) {
-    String pressed = hw.keyboard.getPressedKey();
+    String pressed = hw.keyboard.getPressedKey(); // Uses internal latch to prevent skipping
     if (pressed == "UP") {
       selectedApp = (selectedApp - 1 + numApps) % numApps;
       drawMenu(); 
@@ -87,13 +115,12 @@ void SystemMenu::update() {
       selectedApp = (selectedApp + 1) % numApps;
       drawMenu(); 
     }
-    return; 
+  } else {
+    // 5. Run Active Sub-View Logic
+    if (currentState == AXIS) axis3DView.update();
+    else if (currentState == DATA) dataView.update();
+    else if (currentState == GRAPHIC) graphicView.update();
   }
-
-  // --- Sub-App Logic ---
-  if (currentState == AXIS) axis3DView.update();
-  else if (currentState == DATA) dataView.update();
-  else if (currentState == GRAPHIC) graphicView.update();
 }
 
 void SystemMenu::exit() {}

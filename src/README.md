@@ -14,7 +14,7 @@ Started: Dec 22, 2025 | Pop!_OS Linux + PlatformIO in VS Code
     TFT_DC          GPIO-17 
     TFT_CS          GPIO-5
 
-    JoyStick_Right_X     GPIO-39;
+    JoyStick_Right_X     GPIO-39; 
     JoyStick_Right_Y     GPIO-36;
 
     JoyStick_Left_X     GPIO-12;
@@ -22,21 +22,21 @@ Started: Dec 22, 2025 | Pop!_OS Linux + PlatformIO in VS Code
 
     keyboard    GPIO-34  // 5-Button Analog Keyboard
 
-    Encoder_Right_SW    GPIO-35
-    Encoder_Right_DT    GPIO-32
-    Encoder_Right_CLK   GPIO-33
+    Encoder_Right_DT    GPIO-14
+    Encoder_Right_CLK   GPIO-4
 
-    Encoder_Left_SW    GPIO-25 //not working
     Encoder_Left_DT    GPIO-26
     Encoder_Left_CLK   GPIO-27
 
-    Potentiometer_Right     GPIO-14
-    Potentiometer_Middle    GPIO-4
-    Potentiometer_Left      GPIO-15
+    Potentiometer_Right     GPIO-32
+    Potentiometer_Middle    GPIO-33
+    Potentiometer_Left      GPIO-35
 
     IMU_SCL GPIO-22 //LSM6DS33
     IMU_SDA GPIO-21
 
+    Toggle Switch 1    GPIO-19
+    Toggle Switch 2    GPIO-25 
 
 
 

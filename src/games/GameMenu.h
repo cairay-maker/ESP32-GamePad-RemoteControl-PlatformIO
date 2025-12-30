@@ -12,8 +12,8 @@ class GameMenu : public Activity {
 public:
   explicit GameMenu(TFTHandler& tft, Hardware& hw);
 
-  void init() override {} // Added to satisfy the pure virtual requirement
-  void draw() override {} // Added to satisfy the pure virtual requirement (Logic is in drawMenu)
+  void init() override {} 
+  void draw() override {} 
   void enter() override;
   void update() override;
   void exit() override;
@@ -22,6 +22,7 @@ private:
   unsigned long selectHoldStartTime = 0;
   bool isHoldingSelect = false;
   bool suppressNextRelease = false;
+  bool lastWifiState = false; 
 
   // Game instances
   PongGame pongGame;

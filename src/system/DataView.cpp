@@ -19,7 +19,7 @@ void DataView::update() {
   c.fillSprite(TFT_BLACK);
 
   // 3. Draw Header
-  tft.drawCenteredText("Remote Control Data", 8, TFT_CYAN, 1);
+  tft.drawCenteredText("DATA VIEW", 8, TFT_CYAN, 1);
 
   // 4. Data Extraction from unified hardware state (inherited 'hw')
   bool s1 = (hw.state.buttons & (1 << 7));
@@ -48,7 +48,7 @@ void DataView::update() {
   };
 
   // 6. Draw the Data Lines
-  printLine(TFT_LIGHTGREY, "Switch 1:%s Switch 2:%s", s1 ? "On " : "Off", s2 ? "On " : "Off");
+  printLine(TFT_LIGHTGREY, "Switch1:%s Switch2:%s", s1 ? "On " : "Off", s2 ? "On " : "Off");
 
   if (currentKey != "NONE") {
     printLine(TFT_RED, "Keyboard: %s", currentKey.c_str());
@@ -56,10 +56,12 @@ void DataView::update() {
     printLine(TFT_YELLOW, "Keyboard: None");
   }
 
-  printLine(TFT_SKYBLUE, "JS_R: %+5.2f %+5.2f", hw.state.joyRX, hw.state.joyRY);
-  printLine(TFT_SKYBLUE, "JS_L: %+5.2f %+5.2f", hw.state.joyLX, hw.state.joyLY);
-  printLine(TFT_ORANGE, "EncR: %3ld  %s", hw.state.encR, encRBtn ? "Select" : "None");
-  printLine(TFT_ORANGE, "EncL: %3ld  %s", hw.state.encL, encLBtn ? "Select" : "None");
+  printLine(TFT_SKYBLUE, "JS_L: %+5.2f %+5.2f %s", hw.state.joyLX, hw.state.joyLY, (WiFi.getMode() == WIFI_OFF) ? "ON" : "OFF");
+  printLine(TFT_SKYBLUE, "JS_R: %+5.2f %+5.2f %s", hw.state.joyRX, hw.state.joyRY, "ON");
+  
+  printLine(TFT_ORANGE, "EncL:%3ld ", hw.state.encL);
+  printLine(TFT_ORANGE, "EncR:%3ld ", hw.state.encR);
+
   printLine(TFT_GREEN,  "PotL:%+4.1f M:%+4.1f R:%+4.1f", hw.state.potL, hw.state.potM, hw.state.potR);
   
   printLine(TFT_MAGENTA, "AcclX:%+4.1f Y:%+4.1f Z:%+4.1f", hw.state.ax, hw.state.ay, hw.state.az);

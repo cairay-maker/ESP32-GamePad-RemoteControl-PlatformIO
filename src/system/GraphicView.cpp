@@ -22,7 +22,7 @@ void GraphicView::update() {
   c.fillSprite(TFT_BLACK);
 
   // 3. Draw Title
-  tft.drawCenteredText("Remote Control Graphic", 8, TFT_CYAN, 1);
+  tft.drawCenteredText("GRAPHIC VIEW", 8, TFT_CYAN, 1);
 
   // 4. Draw Outlines
   c.drawRect(46, 61, 69, 30, TFT_CYAN); // IMU Rect
@@ -60,12 +60,21 @@ void GraphicView::update() {
 
   // 7. Joysticks
   const int left_cx = 23, right_cx = 136, j_cy = 110, j_r = 15;
-  c.drawCircle(left_cx, j_cy, j_r, TFT_WHITE);
+  
   c.drawCircle(right_cx, j_cy, j_r, TFT_WHITE);
-
-  c.fillCircle(left_cx + (hw.state.joyLX * (j_r - 6)), j_cy - (hw.state.joyLY * (j_r - 6)), JOYSTICK_DOT, JOYSTICK_COLOR);
   c.fillCircle(right_cx + (hw.state.joyRX * (j_r - 6)), j_cy - (hw.state.joyRY * (j_r - 6)), JOYSTICK_DOT, JOYSTICK_COLOR);
+  c.fillCircle(left_cx + (hw.state.joyLX * (j_r - 6)), j_cy - (hw.state.joyLY * (j_r - 6)), JOYSTICK_DOT, JOYSTICK_COLOR);
+  
 
+  if (WiFi.getMode() == WIFI_OFF){ //Gray out when WiFi is on
+    c.drawCircle(left_cx, j_cy, j_r, TFT_WHITE);
+    c.fillCircle(left_cx + (hw.state.joyLX * (j_r - 6)), j_cy - (hw.state.joyLY * (j_r - 6)), JOYSTICK_DOT, JOYSTICK_COLOR);
+  }else{
+    c.drawCircle(left_cx, j_cy, j_r, TFT_DARKGREY);
+    c.fillCircle(left_cx + (hw.state.joyLX * (j_r - 6)), j_cy - (hw.state.joyLY * (j_r - 6)), JOYSTICK_DOT, TFT_DARKGREY);
+  }
+  
+  //  ---
   // 8. Encoders
   auto drawEnc = [&](int cx, int cy, long val, bool isPressed, uint16_t color) {
       c.drawCircle(cx, cy, 13, color);
