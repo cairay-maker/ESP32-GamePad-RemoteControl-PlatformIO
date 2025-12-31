@@ -5,6 +5,7 @@
 #include "system/Axis3DView.h"   // Updated path to match typical view structure
 #include "system/DataView.h"
 #include "system/GraphicView.h"
+#include "system/EspNowView.h"
 
 class SystemMenu : public Activity {
 public:
@@ -20,15 +21,15 @@ public:
   void drawMenu();
 
 private:
-  enum SystemState { MENU, AXIS, DATA, GRAPHIC };
+  enum SystemState { MENU, ESPNOW, AXIS, DATA, GRAPHIC };
   SystemState currentState = MENU;
 
   void startApp(int index);
 
   // App Selection
   int selectedApp = 0;
-  const int numApps = 3;
-  const char* appNames[3] = {"3D AXIS VISUALIZER", "LIVE DATA TELEMETRY", "GRAPHIC DASHBOARD"};
+  const int numApps = 4;
+  const char* appNames[4] = {"ESP-NOW INFO VIEW", "3D AXIS VISUALIZER", "LIVE DATA TELEMETRY", "GRAPHIC DASHBOARD"};
 
   // Selection & Timing Logic
   unsigned long selectHoldStartTime = 0;
@@ -42,6 +43,7 @@ private:
   Axis3DView axis3DView;
   DataView dataView;
   GraphicView graphicView;
+  EspNowView espNowView;
 };
 
 #endif

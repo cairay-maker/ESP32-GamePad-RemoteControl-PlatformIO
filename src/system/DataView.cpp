@@ -8,6 +8,15 @@ DataView::DataView(TFTHandler& tftRef, Hardware& hwRef)
 }
 
 void DataView::enter() {
+  // 1. Show a message so the user knows to hold still
+  tft.canvas.fillSprite(TFT_BLACK);
+  tft.drawCenteredText("CALIBRATING IMU", 50, TFT_YELLOW, 1);
+  tft.drawCenteredText("HOLD STILL...", 70, TFT_WHITE, 1);
+  tft.updateDisplay();
+
+  // 2. Call the calibration function (this takes ~300ms)
+  hw.imu.calibrate();
+
   tft.clearScreen();
 }
 

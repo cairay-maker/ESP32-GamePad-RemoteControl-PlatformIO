@@ -1,4 +1,5 @@
 #include "hal/TFTHandler.h"
+#include <WiFi.h>
 
 // Initialize canvas with the address of tft
 TFTHandler::TFTHandler() : tft(TFT_eSPI()), canvas(&tft) {}
@@ -32,4 +33,15 @@ void TFTHandler::drawCenteredText(const char* text, int y, uint16_t color, int s
 // Added missing definition
 void TFTHandler::updateDisplay() {
     canvas.pushSprite(0, 0);
+}
+
+void TFTHandler::drawWifiIcon() {
+  bool wifiOn = (WiFi.getMode() != WIFI_OFF);
+  int x = 148, y = 4;
+  uint16_t color = wifiOn ? TFT_GREEN : TFT_DARKGREY;
+  
+  // Draw 3 signal bars of increasing height
+  canvas.fillRect(x,     y + 4, 2, 2, color); 
+  canvas.fillRect(x + 3, y + 2, 2, 4, color); 
+  canvas.fillRect(x + 6, y,     2, 6, color); 
 }

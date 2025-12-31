@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include "hal/Hardware.h"
 #include "hal/TFTHandler.h"
-#include "hal/ESPNow.h"
+#include "hal/ESPNowHandler.h"
 #include "Activity.h"
 
 // Gatekeeper Menus
@@ -127,6 +127,16 @@ if (s2 != lastS2) {
     currentActivity->update();
   }
 
+  // --- 4. ESP-NOW TRANSMIT ---
+  // Only send if Switch 2 is ON. This happens every loop for low latency.
+  if (hw.Switch2.isOn()) {
+    espNow.send(hw); 
+  }
+
+  if (currentActivity) {
+    currentActivity->update();
+  }
+  
   // Log values occasionally (not every loop!) to prevent lag
   logHardwareChanges(200, 0.4);
 

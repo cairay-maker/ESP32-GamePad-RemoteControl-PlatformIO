@@ -26,16 +26,8 @@ void GameMenu::drawMenu() {
   tft.canvas.fillSprite(TFT_BLACK);
   
   // --- WiFi Status Icon (Top Right) ---
-  bool wifiOn = (WiFi.getMode() != WIFI_OFF);
-  int x = 148, y = 4;
-  uint16_t color = wifiOn ? TFT_GREEN : TFT_DARKGREY;
-  
-  // 3 bars of increasing height
-  tft.canvas.fillRect(x,     y + 4, 2, 2, color); 
-  tft.canvas.fillRect(x + 3, y + 2, 2, 4, color); 
-  tft.canvas.fillRect(x + 6, y,     2, 6, color); 
-  
-  lastWifiState = wifiOn;
+  tft.drawWifiIcon(); 
+  lastWifiState = (WiFi.getMode() != WIFI_OFF);
 
   tft.drawCenteredText("GAME MENU", 8, TFT_CYAN, 1);
 

@@ -6,7 +6,8 @@ SystemMenu::SystemMenu(TFTHandler& tftRef, Hardware& hwRef)
     : Activity(tftRef, hwRef),
       axis3DView(tftRef, hwRef),
       dataView(tftRef, hwRef),
-      graphicView(tftRef, hwRef)
+      graphicView(tftRef, hwRef),
+      espNowView(tftRef, hwRef)
 {}
 
 void SystemMenu::enter() {
@@ -24,16 +25,8 @@ void SystemMenu::drawMenu() {
   tft.canvas.fillSprite(TFT_BLACK);
   
   // --- WiFi Status Icon (Top Right) ---
-  bool wifiOn = (WiFi.getMode() != WIFI_OFF);
-  int x = 148, y = 4;
-  uint16_t color = wifiOn ? TFT_GREEN : TFT_DARKGREY;
-  
-  // Draw 3 signal bars of increasing height
-  tft.canvas.fillRect(x,     y + 4, 2, 2, color); 
-  tft.canvas.fillRect(x + 3, y + 2, 2, 4, color); 
-  tft.canvas.fillRect(x + 6, y,     2, 6, color); 
-  
-  lastWifiState = wifiOn; // Update tracker to current state
+  tft.drawWifiIcon(); 
+  lastWifiState = (WiFi.getMode() != WIFI_OFF);
 
   tft.drawCenteredText("SYSTEM MENU", 8, TFT_CYAN, 1);
 
@@ -60,9 +53,10 @@ void SystemMenu::startApp(int index) {
   tft.canvas.fillSprite(TFT_BLACK);
   tft.updateDisplay();
   
-  if (index == 0)      { currentState = AXIS;    axis3DView.enter(); }
-  else if (index == 1) { currentState = DATA;    dataView.enter(); }
-  else if (index == 2) { currentState = GRAPHIC; graphicView.enter(); }
+  if (index == 0)      { currentState = ESPNOW;  espNowView.enter(); }
+  else if (index == 1) { currentState = AXIS;    axis3DView.enter(); }
+  else if (index == 2) { currentState = DATA;    dataView.enter(); }
+  else if (index == 3) { currentState = GRAPHIC; graphicView.enter(); }
 }
 
 void SystemMenu::update() {
@@ -120,7 +114,8 @@ void SystemMenu::update() {
     if (currentState == AXIS) axis3DView.update();
     else if (currentState == DATA) dataView.update();
     else if (currentState == GRAPHIC) graphicView.update();
-  }
+    else if (currentState == ESPNOW) espNowView.update();
+  }     
 }
 
 void SystemMenu::exit() {}
