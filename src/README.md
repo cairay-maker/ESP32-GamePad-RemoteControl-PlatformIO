@@ -5,6 +5,11 @@ Started: Dec 22, 2025 | Pop!_OS Linux + PlatformIO in VS Code
 ## Hardware
 [ESP32-WROOM-32 30-pin USB-C board](https://europe1.discourse-cdn.com/arduino/original/4X/7/7/e/77ead2a2a7d13b189ad9b6ba24c1d55b2c3e4645.jpeg)  
 
+<!-- added explicit screen description -->
+The project is built around a **DIYTZT ESP32 LVGL WiFi & Bluetooth development board** with an integrated
+2.4" TFT LCD module. The display uses a 240×320 pixel ILI9341-compatible panel (landscape orientation
+by default). The touch controller is present but not used in the simple demo code.
+
 ## Pin Assignment
     Toggle Swith: GPIO-19; added 5kΩ pull-up from GPIO19 to 3.3V. The pull-up is now ~10× stronger than the internal 45K 
 
@@ -72,6 +77,12 @@ monitor_port = /dev/ttyACM0
 lib_deps = 
     bodmer/TFT_eSPI  ; For TFT displays (configure User_Setup.h)
     olikraus/U8g2    ; For OLED monochrome
+
+; add to build_flags:
+;   -D ST7789_DRIVER=1   ; or ILI9341_DRIVER depending on panel
+;   -D TFT_WIDTH=240      ; width in portrait mode
+;   -D TFT_HEIGHT=320     ; height in portrait mode
+; orientation may switch to landscape by rotation in code
 
 ; Build flags if needed (e.g., for TFT_eSPI)
 build_flags = -DUSER_SETUP_LOADED=1

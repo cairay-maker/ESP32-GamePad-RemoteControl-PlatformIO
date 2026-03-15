@@ -1,144 +1,141 @@
-#include <Arduino.h>
-#include "hal/Hardware.h"
-#include "hal/TFTHandler.h"
-#include "hal/ESPNowHandler.h"
-#include "Activity.h"
+/*
+  An example showing rainbow colours on a 3.5" TFT LCD screen
+  and to show a basic example of font use.
 
-// Gatekeeper Menus
-#include "games/GameMenu.h"
-#include "system/SystemMenu.h"
+  Make sure all the display driver and pin connections are correct by
+  editing the User_Setup.h file in the TFT_eSPI library folder.
 
-// Global objects
-TFTHandler tft;
-Hardware hw; 
-ESPNowHandler espNow;
+  Note that yield() or delay(0) must be called in long duration for/while
+  loops to stop the ESP8266 watchdog triggering.
 
-// Menus
-GameMenu gameMenu(tft, hw);           
-SystemMenu systemMenu(tft, hw);
+  #########################################################################
+  ###### DON'T FORGET TO UPDATE THE User_Setup.h FILE IN THE LIBRARY ######
+  #########################################################################
+*/
 
-// State tracking
-Activity* currentActivity = nullptr;
-uint8_t currentActivityId = 0;
-ControllerState lastLoggedState; 
+#include <TFT_eSPI.h> // Graphics and font library for ST7735 driver chip
+#include <SPI.h>
 
-/**
- * Log hardware values only when they change significantly.
- */
-void logHardwareChanges(float rawAnalogThreshold, float imuThreshold) {
-  static unsigned long lastLogTime = 0;
-  if (millis() - lastLogTime < 100) return; 
 
-  bool changed = false;
+TFT_eSPI tft = TFT_eSPI();  // Invoke library, pins defined in User_Setup.h
 
-  // Change Detection
-  if (abs(hw.state.joyLXRaw - lastLoggedState.joyLXRaw) > rawAnalogThreshold) changed = true;
-  if (abs(hw.state.joyLYRaw - lastLoggedState.joyLYRaw) > rawAnalogThreshold) changed = true;
-  if (abs(hw.state.joyRXRaw - lastLoggedState.joyRXRaw) > rawAnalogThreshold) changed = true;
-  if (abs(hw.state.joyRYRaw - lastLoggedState.joyRYRaw) > rawAnalogThreshold) changed = true;
-  if (abs(hw.state.potLRaw  - lastLoggedState.potLRaw)  > rawAnalogThreshold) changed = true;
-  if (abs(hw.state.potMRaw  - lastLoggedState.potMRaw)  > rawAnalogThreshold) changed = true;
-  if (abs(hw.state.potRRaw  - lastLoggedState.potRRaw)  > rawAnalogThreshold) changed = true;
-  
-  if (hw.state.buttons != lastLoggedState.buttons)         changed = true;
-  if (hw.state.encL != lastLoggedState.encL)               changed = true;
-  if (hw.state.encR != lastLoggedState.encR)               changed = true;
+unsigned long targetTime = 0;
+byte red = 31;
+byte green = 0;
+byte blue = 0;
+byte state = 0;
+unsigned int colour = red << 11;
 
-  if (changed) {
-    lastLogTime = millis();
-    int sw1 = (hw.state.buttons & (1 << 7)) ? 1 : 0;
-    int sw2 = (hw.state.buttons & (1 << 8)) ? 1 : 0;
-    const char* wifiStatus = (WiFi.getMode() == WIFI_OFF) ? "OFF" : "ON ";
-    
-    Serial.printf("WIFI:%s | JL:[%4d,%4d] JR:[%4d,%4d] | POT L:%4d M:%4d R:%4d | SW:%d %d\n",
-                  wifiStatus,
-                  hw.state.joyLXRaw, hw.state.joyLYRaw,
-                  hw.state.joyRXRaw, hw.state.joyRYRaw,
-                  hw.state.potLRaw,  hw.state.potMRaw,  hw.state.potRRaw,
-                  sw1, sw2);
-    
-    lastLoggedState = hw.state;
-  }
-} 
-
-void setup() {
-  Serial.begin(115200);
-  delay(1000); 
-
-  hw.begin(); // Initializes pinModes
-  tft.begin();
-  
-  // Sync WiFi with physical Switch 2 immediately
-  if (hw.Switch2.isOn()) {
-    WiFi.mode(WIFI_STA);
-    espNow.begin();
-    Serial.println("INIT: WiFi ON (Match Switch 2)");
-  } else {
-    WiFi.mode(WIFI_OFF);
-    Serial.println("INIT: WiFi OFF (Match Switch 2)");
-  }
-
-  // Perform initial read
-  hw.readAll(0);
-
-  // Initial Activity selection based on Switch 1
-  if (hw.Switch1.isOn()) {
-    currentActivity = &gameMenu;
-    currentActivityId = 1;
-  } else {
-    currentActivity = &systemMenu;
-    currentActivityId = 2;
-  }
-
-  currentActivity->enter();
+void setup(void) {
+  tft.init();
+  //pinMode(27, OUTPUT);//打钟 
+  //digitalWrite(27,LOW);
+  tft.setRotation(1);
+  //tft.fillScreen(TFT_BLACK);
+  targetTime = millis() + 100;
 }
 
 void loop() {
-// --- 1. WiFi Hardware Master (Switch 2) ---
-static bool lastS2 = (WiFi.getMode() != WIFI_OFF); // Initialize to actual state
-bool s2 = hw.Switch2.isOn(); // GPIO 25
+   tft.fillScreen(TFT_RED);
+   delay(1000);
+   tft.fillScreen(TFT_GREEN);
+   delay(1000);
+   tft.fillScreen(TFT_BLUE);
+   delay(1000);
+   tft.fillScreen(TFT_BLACK);
+   delay(1000);
+   tft.fillScreen(TFT_WHITE);
+   delay(1000);
+   tft.fillScreen(random(0x10000));
+   delay(1000);
 
-if (s2 != lastS2) { 
-  if (s2) {
-    WiFi.mode(WIFI_STA);
-    espNow.begin();
-    Serial.println(">>> WIFI RADIO: ON");
-  } else {
-    WiFi.mode(WIFI_OFF);
-    Serial.println(">>> WIFI RADIO: OFF (ADC2 Unlocked)");
+  // LCD_Clear(0x0000);
+   //delay(2000);
+   // LCD_Clear(0xfffc);
+   //delay(2000);
+   if (targetTime < millis()) 
+   {
+    targetTime = millis() + 10000;
+
+    // Colour changing state machine
+  for (int i = 0; i < tft.width(); i++) {
+      tft.drawFastVLine(i, 0, tft.height(), colour);
+      switch (state) {
+        case 0:
+          green += 2;
+          if (green == 64) {
+            green = 63;
+            state = 1;
+          }
+          break;
+        case 1:
+          red--;
+          if (red == 255) {
+            red = 0;
+            state = 2;
+          }
+          break;
+        case 2:
+          blue ++;
+          if (blue == 32) {
+            blue = 31;
+            state = 3;
+          }
+          break;
+        case 3:
+          green -= 2;
+          if (green == 255) {
+            green = 0;
+            state = 4;
+          }
+          break;
+        case 4:
+          red ++;
+          if (red == 32) {
+            red = 31;
+            state = 5;
+          }
+          break;
+        case 5:
+          blue --;
+          if (blue == 255) {
+            blue = 0;
+            state = 0;
+          }
+          break;
+      }
+      colour = red << 11 | green << 5 | blue;
+    }
+
+    // The standard ADAFruit font still works as before
+    tft.setTextColor(TFT_BLACK);
+    tft.setCursor (12, 5);
+    tft.print("Original ADAfruit font!");
+
+    // The new larger fonts do not use the .setCursor call, coords are embedded
+    tft.setTextColor(TFT_BLACK, TFT_BLACK); // Do not plot the background colour
+
+    // Overlay the black text on top of the rainbow plot (the advantage of not drawing the backgorund colour!)
+    tft.drawCentreString("Font size 2", 80, 14, 2); // Draw text centre at position 80, 12 using font 2
+
+    //tft.drawCentreString("Font size 2",81,12,2); // Draw text centre at position 80, 12 using font 2
+
+    tft.drawCentreString("Font size 4", 80, 30, 4); // Draw text centre at position 80, 24 using font 4
+
+    tft.drawCentreString("12.34", 80, 54, 6); // Draw text centre at position 80, 24 using font 6
+
+    tft.drawCentreString("12.34 is in font size 6", 80, 92, 2); // Draw text centre at position 80, 90 using font 2
+
+    // Note the x position is the top left of the font!
+
+    // draw a floating point number
+    float pi = 3.14159; // Value to print
+    int precision = 3;  // Number of digits after decimal point
+    int xpos = 50;      // x position
+    int ypos = 110;     // y position
+    int font = 2;       // font number only 2,4,6,7 valid. Font 6 only contains characters [space] 0 1 2 3 4 5 6 7 8 9 0 : a p m
+    xpos += tft.drawFloat(pi, precision, xpos, ypos, font); // Draw rounded number and return new xpos delta for next print position
+    tft.drawString(" is pi", xpos, ypos, font); // Continue printing from new x position
+    delay(6000);
   }
-  lastS2 = s2;
-}
-
-  // --- 2. Activity Selection (Switch 1) ---
-  bool s1 = hw.Switch1.isOn();
-  Activity* nextActivity = (s1) ? (Activity*)&gameMenu : (Activity*)&systemMenu;
-  if (nextActivity != currentActivity) {
-    if (currentActivity) currentActivity->exit();
-    currentActivity = nextActivity;
-    currentActivity->enter();
-    Serial.printf("ACTIVITY: Switched to %s\n", s1 ? "Games" : "System");
-  }
-
-  // --- 3. Hardware & Activity Update ---
-  hw.readAll(currentActivityId);
-
-  if (currentActivity) {
-    currentActivity->update();
-  }
-
-  // --- 4. ESP-NOW TRANSMIT ---
-  // Only send if Switch 2 is ON. This happens every loop for low latency.
-  if (hw.Switch2.isOn()) {
-    espNow.send(hw); 
-  }
-
-  if (currentActivity) {
-    currentActivity->update();
-  }
-  
-  // Log values occasionally (not every loop!) to prevent lag
-  logHardwareChanges(200, 0.4);
-
-  delay(5); 
 }
